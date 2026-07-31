@@ -61,6 +61,7 @@ export default function DispatchPage() {
   const [loadingDrivers, setLoadingDrivers] = useState(false)
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null)
   const [driverSearch, setDriverSearch] = useState('')
+  const [driverVehicleTab, setDriverVehicleTab] = useState<'ALL' | 'MOTOR' | 'MOBIL'>('ALL')
 
   const [sequence, setSequence] = useState<Stop[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -191,11 +192,14 @@ export default function DispatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredStops])
 
-  const filteredDrivers = useMemo(() =>
-    drivers.filter((d) => {
-      const q = driverSearch.toLowerCase()
-      return d.name?.toLowerCase().includes(q) || d.username?.toLowerCase().includes(q) || (d.plate_number || '').toLowerCase().includes(q)
-    }), [drivers, driverSearch])
+  const filteredDrivers = useMemo(() => {
+    const q = driverSearch.toLowerCase()
+    return drivers.filter((d) => {
+      const matchSearch = d.name?.toLowerCase().includes(q) || d.username?.toLowerCase().includes(q) || (d.plate_number || '').toLowerCase().includes(q)
+      const matchTab = driverVehicleTab === 'ALL' || d.vehicle_type?.toUpperCase() === driverVehicleTab
+      return matchSearch && matchTab
+    })
+  }, [drivers, driverSearch, driverVehicleTab])
 
   const uniqueMitras = useMemo(() => ['ALL', ...Array.from(new Set(allStops.map((s) => s.mitra_name).filter(Boolean)))], [allStops])
 
@@ -281,9 +285,22 @@ export default function DispatchPage() {
     setLoadingDrivers(true)
     setStep(1)
     setSelectedDriver(null)
+    // Reset tab to match selected order armada
+    setDriverVehicleTab((selectedInfo.armada?.toUpperCase() as 'MOTOR' | 'MOBIL') || 'ALL')
     try {
-      const res = await adminAPI.getDispatchDrivers(selectedInfo.armada || 'motor')
-      setDrivers(res.data.data || res.data || [])
+      // Load ALL drivers — client-side tab filter handles MOTOR/MOBIL separation
+      const [motorRes, mobilRes] = await Promise.all([
+        adminAPI.getDispatchDrivers('motor'),
+        adminAPI.getDispatchDrivers('mobil'),
+      ])
+      const motorDrivers = (motorRes.data.data || motorRes.data || []) as Driver[]
+      const mobilDrivers = (mobilRes.data.data || mobilRes.data || []) as Driver[]
+      // Merge, deduplicate by ID
+      const combined = [...motorDrivers]
+      for (const d of mobilDrivers) {
+        if (!combined.find((x) => x.id === d.id)) combined.push(d)
+      }
+      setDrivers(combined)
     } catch { toast.error('Gagal mengambil daftar driver.') }
     finally { setLoadingDrivers(false) }
   }
@@ -553,6 +570,44 @@ export default function DispatchPage() {
               <h2 className="font-semibold text-foreground">Pilih Driver Armada</h2>
               <p className="text-xs text-muted-foreground">Armada: {selectedInfo.armada?.toUpperCase()} • {selectedStopIds.length} Alamat Terpilih</p>
             </div>
+          </div>
+
+          {/* Armada Tabs */}
+          <div className="flex items-center gap-2 mb-4 bg-muted/40 p-1.5 rounded-2xl border border-border">
+            <button
+              onClick={() => setDriverVehicleTab('ALL')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                driverVehicleTab === 'ALL'
+                  ? 'bg-white dark:bg-card text-foreground shadow-sm border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Semua ({drivers.length})
+            </button>
+            <button
+              onClick={() => setDriverVehicleTab('MOTOR')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                driverVehicleTab === 'MOTOR'
+                  ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              🛵 MOTOR ({drivers.filter((d) => d.vehicle_type?.toUpperCase() === 'MOTOR').length})
+            </button>
+            <button
+              onClick={() => setDriverVehicleTab('MOBIL')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                driverVehicleTab === 'MOBIL'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              🚗 MOBIL ({drivers.filter((d) => d.vehicle_type?.toUpperCase() === 'MOBIL').length})
+            </button>
           </div>
 
           <div className="relative mb-4">

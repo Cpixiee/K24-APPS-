@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
@@ -355,9 +355,14 @@ export default function CreateOrderPage() {
     reader.readAsArrayBuffer(file)
   }
 
+  // Ref guard: prevents double-submit even if state update hasn't re-rendered yet
+  const isSubmittingRef = useRef(false)
+
   const handleSubmit = async () => {
+    if (isSubmittingRef.current) return   // <-- block second click immediately
     const empty = rows.filter((r) => !r.nama_apotek.trim() || !r.alamat_lengkap.trim())
     if (empty.length > 0) { toast.error('Mohon lengkapi Nama Apotek dan Alamat untuk seluruh baris.'); return }
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       await adminAPI.createBulkOrders({
@@ -376,7 +381,10 @@ export default function CreateOrderPage() {
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } }
       toast.error(axiosErr.response?.data?.message || 'Gagal mengirim order')
-    } finally { setSubmitting(false) }
+    } finally {
+      isSubmittingRef.current = false
+      setSubmitting(false)
+    }
   }
 
   const formatRp = (n?: number) => n != null ? `Rp ${n.toLocaleString('id-ID')}` : '-'
