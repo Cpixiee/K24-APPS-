@@ -250,9 +250,53 @@ Berikut adalah beberapa endpoint utama yang disediakan oleh Backend Go API (`htt
 
 ---
 
-## 🌐 Panduan Deployment ke Production Server
+## 🐳 Docker Deployment Setup (Server Production)
 
-Jika Anda ingin memasang platform ini pada Server Production (Linux Ubuntu/Debian):
+Seluruh service (PostgreSQL, Backend API Go, dan Web Dashboard Next.js 16) telah dikonfigurasi menggunakan **Docker & Docker Compose**:
+
+| Service | Container Name | Port Server (Host) | Internal Port | Environment / Image |
+| :--- | :--- | :--- | :--- | :--- |
+| **⚙️ Backend API (Go)** | `k24_backend` | **`9001`** | `8087` | Golang 1.22 Alpine Multi-Stage |
+| **🖥️ Web Dashboard (Next.js)**| `k24_frontend` | **`9002`** | `3000` | Node 20 Alpine Standalone |
+| **🗄️ Database (Postgres)** | `k24_postgres` | `5432` | `5432` | PostgreSQL 16 Alpine |
+
+### 🚀 Cara Deploy di Server dengan Docker Compose:
+
+1. Clone repository ke server Anda:
+   ```bash
+   git clone git@github.com:Cpixiee/K24-APPS-.git
+   cd K24-APPS-
+   ```
+2. Jalankan seluruh service dengan 1 perintah:
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. Akses aplikasi:
+   - **Backend API**: `http://IP-SERVER-ANDA:9001/api`
+   - **Web Dashboard**: `http://IP-SERVER-ANDA:9002`
+
+### 🛠️ Perintah Manajemen Docker Useful:
+
+```bash
+# Cek status seluruh container
+docker compose ps
+
+# Lihat log real-time Backend
+docker compose logs -f backend
+
+# Lihat log real-time Frontend Web
+docker compose logs -f frontend
+
+# Stop dan hapus container
+docker compose down
+```
+
+---
+
+## 🌐 Panduan Manual Deployment (Tanpa Docker)
+
+Jika Anda ingin memasang platform ini secara manual tanpa Docker pada Server Linux (Ubuntu/Debian):
 
 ### 1. Build Backend Go Binary
 ```bash
@@ -270,11 +314,6 @@ Jalankan menggunakan PM2:
 ```bash
 pm2 start npm --name "k24-web" -- start
 ```
-
-### 3. Nginx Reverse Proxy Configuration
-Gunakan Nginx untuk menyalurkan traffic HTTP/HTTPS domain Anda:
-- Port `3000` -> Domain Web Dashboard (`https://logistics.k24.co.id`)
-- Port `8087` -> Domain API Backend (`https://api-logistics.k24.co.id`)
 
 ---
 
