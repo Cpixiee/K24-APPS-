@@ -303,49 +303,16 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                       Row(
                         children: [
                           // Yellow box with package logo icon
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFB300),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.inventory_2_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                "KUNING",
-                                style: TextStyle(
-                                  fontFamily: 'Poppins',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFFFFB300),
-                                  height: 1.1,
-                                ),
+                          GestureDetector(
+                            onDoubleTap: () => _showDeveloperSettings(context),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.asset(
+                                'assets/images/logo_ningrat_text.jpg',
+                                height: 44,
+                                fit: BoxFit.contain,
                               ),
-                              GestureDetector(
-                                onDoubleTap: () => _showDeveloperSettings(context),
-                                child: const Text(
-                                  "Kurir Ningrat",
-                                  style: TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF1E2022),
-                                    height: 1.1,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ],
                       ),

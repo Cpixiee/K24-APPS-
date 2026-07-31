@@ -51,6 +51,12 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
     _invoices = [];
     final textToParse = '${widget.order.checkedInvoices} ${widget.order.medicineSummary}';
 
+    if (textToParse.toUpperCase().contains('BARANG SUSULAN') || textToParse.toUpperCase().contains('BARANG_SUSULAN')) {
+      if (!_invoices.contains('BARANG SUSULAN')) {
+        _invoices.add('BARANG SUSULAN');
+      }
+    }
+
     // 1. First, try matching explicit invoice numbers with digits (e.g. 64297, 64299)
     final regExp = RegExp(r'\b(?:INV-?\d+|\d{4,10})\b', caseSensitive: false);
     final matches = regExp.allMatches(textToParse);

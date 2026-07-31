@@ -147,19 +147,19 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
         )}>
           {!isCollapsed && (
             <Link href="/dashboard/overview" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shadow-md shadow-blue-500/25">
-                <Package className="h-4 w-4 text-white" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
+                <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
               </div>
               <div className="flex flex-col">
-                <span className="text-sm font-bold text-foreground leading-none">K-24 Logistics</span>
+                <span className="text-sm font-extrabold tracking-wide text-foreground leading-none">NINGRAT</span>
                 <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Management System</span>
               </div>
             </Link>
           )}
 
           {isCollapsed && (
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-              <Package className="h-4 w-4 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
+              <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
             </div>
           )}
 

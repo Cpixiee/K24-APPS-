@@ -287,6 +287,16 @@ export default function CreateOrderPage() {
               if (!cellVal) continue
 
               const lowerCell = cellVal.toLowerCase()
+
+              // Handle "BARANG SUSULAN" specifically
+              if (lowerCell.includes('barang susulan') || lowerCell.includes('susulan')) {
+                const invTag = 'BARANG SUSULAN'
+                if (!currentItem.invoices.includes(invTag)) {
+                  currentItem.invoices.push(invTag)
+                }
+                continue
+              }
+
               if (
                 lowerCell.includes('faktur') ||
                 lowerCell.includes('revisi') ||

@@ -283,10 +283,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           // Decorative delivery icon in circle
                           Center(
                             child: Container(
-                              padding: const EdgeInsets.all(20),
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                shape: BoxShape.circle,
+                                borderRadius: BorderRadius.circular(24),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withOpacity(0.08),
@@ -295,10 +295,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ],
                               ),
-                              child: const Icon(
-                                Icons.two_wheeler_rounded,
-                                size: 48,
-                                color: primaryYellow,
+                              child: Image.asset(
+                                'assets/images/logo_ningrat_text.jpg',
+                                height: 68,
+                                fit: BoxFit.contain,
                               ),
                             ),
                           ),

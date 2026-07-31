@@ -62,18 +62,8 @@ export default function LoginPage() {
       {/* ─── Left Panel: Functional Zone (60% Desktop) ─── */}
       <div className="w-full md:w-[60%] flex flex-col bg-white relative z-10 min-h-screen p-6 md:p-12 lg:p-16">
         {/* Header / Logo */}
-        <div className="flex items-center space-x-3 mb-10 md:mb-20">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] flex items-center justify-center shadow-[0_8px_16px_-4px_rgba(37,99,235,0.25)]">
-            <Package className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex items-baseline">
-            <span className="text-xl font-extrabold tracking-tight bg-gradient-to-br from-[#2563EB] to-[#1E3A8A] bg-clip-text text-transparent">
-              K-24
-            </span>
-            <span className="text-xs font-bold text-[#64748B] uppercase tracking-widest ml-1.5">
-              LOGISTICS
-            </span>
-          </div>
+        <div className="flex items-center space-x-3 mb-10 md:mb-16">
+          <img src="/logo_ningrat_text.jpg" alt="NINGRAT Logo" className="h-12 w-auto object-contain rounded-lg" />
         </div>
 
         {/* Form Container (Centered Vertically) */}
