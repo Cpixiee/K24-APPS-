@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:apps_k24/models/dashboard_data.dart';
 import 'package:apps_k24/services/api_service.dart';
 import 'package:apps_k24/theme/app_colors.dart';
@@ -385,6 +388,27 @@ Penerima:
 Nama: $recipientName
 No telp: $recipientPhone''';
 
+    // 1. First, attempt to share the Ningrat Logo Image WITH the report text as caption via Share.shareXFiles
+    try {
+      final byteData = await rootBundle.load('assets/images/logo_ningrat_text.jpg');
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/logo_ningrat_report.jpg');
+      await tempFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+
+      if (await tempFile.exists()) {
+        final xFile = XFile(tempFile.path);
+        await Share.shareXFiles(
+          [xFile],
+          text: message,
+          subject: 'K24 JAKARTA REALTIME REPORT',
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint('[WA Image Share] Could not share logo image, falling back to url_launcher: $e');
+    }
+
+    // 2. Fallback to direct url_launcher wa.me link
     final encodedMessage = Uri.encodeComponent(message);
     final waUrl = Uri.parse('https://wa.me/$waNumber?text=$encodedMessage');
 
