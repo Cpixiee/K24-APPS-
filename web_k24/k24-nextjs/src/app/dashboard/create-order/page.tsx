@@ -180,48 +180,162 @@ export default function CreateOrderPage() {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer)
         const workbook = XLSX.read(data, { type: 'array' })
 
-        // Automatically pick the first sheet/page (Sheet 1) containing address & invoice data
+        // Automatically pick Sheet 1 (first sheet/page)
         const firstSheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheetName]
 
         // Convert worksheet to 2D array of rows
-        const rowsData = XLSX.utils.sheet_to_json<Array<string | number>>(worksheet, { header: 1 })
+        const rowsData = XLSX.utils.sheet_to_json<Array<string | number | undefined>>(worksheet, { header: 1 })
 
-        const parsed: OrderRow[] = []
+        // 1. Locate Table Header Row (containing "Nama Apotek" or "ALAMAT")
+        let headerRowIndex = -1
+        let namaColIdx = -1
+        let alamatColIdx = -1
+        let invoiceStartColIdx = -1
 
-        // Iterate starting from row index 1 (skipping header row 0)
-        for (let i = 1; i < rowsData.length; i++) {
+        for (let r = 0; r < Math.min(15, rowsData.length); r++) {
+          const row = rowsData[r]
+          if (!row) continue
+          for (let c = 0; c < row.length; c++) {
+            const cellText = String(row[c] ?? '').trim().toLowerCase()
+            if (cellText.includes('nama apotek') || cellText.includes('penerima')) {
+              headerRowIndex = r
+              namaColIdx = c
+            } else if (cellText.includes('alamat')) {
+              headerRowIndex = r
+              alamatColIdx = c
+            } else if (cellText.includes('invoice')) {
+              headerRowIndex = r
+              if (invoiceStartColIdx === -1) invoiceStartColIdx = c
+            }
+          }
+          if (namaColIdx !== -1 && alamatColIdx !== -1) break
+        }
+
+        // Fallbacks if table header is flat (simple CSV)
+        if (namaColIdx === -1) namaColIdx = 0
+        if (alamatColIdx === -1) alamatColIdx = 1
+        if (invoiceStartColIdx === -1) invoiceStartColIdx = 2
+        const startDataRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 0
+
+        const parsedMap: Map<string, OrderRow> = new Map()
+        let currentItem: OrderRow | null = null
+
+        // 2. Iterate data rows starting after header row
+        for (let i = startDataRow; i < rowsData.length; i++) {
           const row = rowsData[i]
           if (!row || row.length === 0) continue
 
-          const nama = String(row[0] ?? '').trim()
-          const alamat = String(row[1] ?? '').trim()
-          if (!nama && !alamat) continue
+          const rawNama = String(row[namaColIdx] ?? '').trim()
+          const rawAlamat = String(row[alamatColIdx] ?? '').trim()
 
-          const invStr = String(row[2] ?? '').trim()
-          const invoices = invStr ? invStr.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) : []
-          const kubik = row[3] !== undefined && row[3] !== null ? String(row[3]).trim() : ''
-          const berat = row[4] !== undefined && row[4] !== null ? String(row[4]).trim() : ''
+          // Filter out title headers or non-order rows
+          const lowerNama = rawNama.toLowerCase()
+          if (
+            lowerNama.includes('hari, tanggal') ||
+            lowerNama.includes('waktu pickup') ||
+            lowerNama.includes('form serah terima') ||
+            lowerNama.includes('delivery') ||
+            lowerNama.includes('armada') ||
+            lowerNama.includes('nama apotek')
+          ) {
+            continue
+          }
 
-          parsed.push({
-            id: Date.now() + i + Math.random(),
-            nama_apotek: nama,
-            alamat_lengkap: alamat,
-            invoices,
-            kubik_aktual: kubik,
-            berat_aktual: berat,
-            latitude: 0,
-            longitude: 0,
-          })
+          // Check if this row defines a NEW Apotek entry
+          const isNewApotek = rawNama.length > 0 && (
+            rawNama.toUpperCase().startsWith('K-24') ||
+            rawNama.toUpperCase().startsWith('APOTEK') ||
+            rawNama.toUpperCase().startsWith('K24') ||
+            rawAlamat.length > 0
+          )
+
+          if (isNewApotek) {
+            // Save previous item if valid
+            if (currentItem && (currentItem.nama_apotek || currentItem.alamat_lengkap)) {
+              const key = `${currentItem.nama_apotek}_${currentItem.alamat_lengkap}`
+              if (!parsedMap.has(key)) {
+                parsedMap.set(key, currentItem)
+              } else {
+                const existing = parsedMap.get(key)!
+                for (const inv of currentItem.invoices) {
+                  if (!existing.invoices.includes(inv)) existing.invoices.push(inv)
+                }
+              }
+            }
+
+            currentItem = {
+              id: Date.now() + i + Math.random(),
+              nama_apotek: rawNama,
+              alamat_lengkap: rawAlamat,
+              invoices: [],
+              kubik_aktual: '',
+              berat_aktual: '',
+              latitude: 0,
+              longitude: 0,
+            }
+          }
+
+          // Extract all invoice numbers across invoice columns
+          if (currentItem) {
+            if (!currentItem.alamat_lengkap && rawAlamat) {
+              currentItem.alamat_lengkap = rawAlamat
+            }
+
+            for (let c = invoiceStartColIdx; c < row.length; c++) {
+              const cellVal = String(row[c] ?? '').trim()
+              if (!cellVal) continue
+
+              const lowerCell = cellVal.toLowerCase()
+              if (
+                lowerCell.includes('faktur') ||
+                lowerCell.includes('revisi') ||
+                lowerCell.includes('jumlah') ||
+                lowerCell.includes('total') ||
+                lowerCell.includes('mobil') ||
+                lowerCell.includes('motor')
+              ) {
+                continue
+              }
+
+              const tokens = cellVal.split(/[\s,;]+/)
+              for (const token of tokens) {
+                const cleanToken = token.replace(/^"|"$/g, '').trim()
+                if (cleanToken && /^\d{4,10}$|^INV-?/i.test(cleanToken)) {
+                  const formattedInv = cleanToken.toUpperCase().startsWith('INV-')
+                    ? cleanToken.toUpperCase()
+                    : `INV-${cleanToken}`
+                  if (!currentItem.invoices.includes(formattedInv)) {
+                    currentItem.invoices.push(formattedInv)
+                  }
+                }
+              }
+            }
+          }
         }
+
+        // Save last item
+        if (currentItem && (currentItem.nama_apotek || currentItem.alamat_lengkap)) {
+          const key = `${currentItem.nama_apotek}_${currentItem.alamat_lengkap}`
+          if (!parsedMap.has(key)) {
+            parsedMap.set(key, currentItem)
+          } else {
+            const existing = parsedMap.get(key)!
+            for (const inv of currentItem.invoices) {
+              if (!existing.invoices.includes(inv)) existing.invoices.push(inv)
+            }
+          }
+        }
+
+        const parsed = Array.from(parsedMap.values())
 
         if (parsed.length > 0) {
           setRows(parsed)
-          toast.success(`Berhasil mengimpor ${parsed.length} baris data dari ${file.name} (Sheet 1: ${firstSheetName})!`)
+          toast.success(`Berhasil mengimpor ${parsed.length} titik apotek dari ${file.name}!`)
           calcPreview(parsed)
           setStep(3)
         } else {
-          toast.error('Format file salah atau kosong. Gunakan kolom: Nama Apotek, Alamat, Invoice, Kubik, Berat')
+          toast.error('Format file tidak dapat dikenali. Pastikan tabel memiliki kolom Nama Apotek dan Alamat.')
         }
       } catch (err) {
         console.error('Error parsing file:', err)
