@@ -1129,6 +1129,49 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
         icon: const Icon(Icons.camera_alt_outlined),
         label: const Text('Upload Bukti Pickup', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
       );
+    } else if (_currentOrder.status == 'PENDING' && _currentOrder.unboxingOption == 'WAITING_FOR_UNBOXING') {
+      // Unboxing ditunda: tampilkan tombol lanjut ke titik berikutnya, atau kembali jika ini titik terakhir
+      final nextDelayStop = _nextUncompletedStop;
+      if (nextDelayStop != null) {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFF59E0B),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () {
+            setState(() {
+              _currentOrder = nextDelayStop;
+              _routePoints = [];
+            });
+            _fetchRoute();
+            _refreshOrderDetails();
+          },
+          icon: const Icon(Icons.skip_next_rounded),
+          label: Text(
+            'Lanjutkan ke ${nextDelayStop.customerName.isNotEmpty ? nextDelayStop.customerName : (nextDelayStop.pharmacyName.isNotEmpty ? nextDelayStop.pharmacyName : 'Titik Berikutnya')}',
+            style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      } else {
+        // Titik terakhir & unboxing ditunda → kembali ke daftar pesanan
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6B7280),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      }
     } else if (_currentOrder.status == 'DELIVERING' || _currentOrder.status == 'PENDING') {
       return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
