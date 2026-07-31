@@ -578,10 +578,71 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
           _routePoints = [];
         });
         await _refreshOrderDetails();
+        _promptNextStopVerification(res);
       } else {
         await _refreshOrderDetails();
       }
     }
+  }
+
+  void _promptNextStopVerification(OrderModel nextStop) {
+    final targetName = nextStop.customerName.isNotEmpty ? nextStop.customerName : nextStop.pharmacyName;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              const Icon(Icons.location_on_rounded, color: AppColors.primaryGreen, size: 36),
+              const SizedBox(height: 10),
+              Text(
+                'Lanjut ke Titik Berikutnya ($targetName)',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins'),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                nextStop.deliveryAddress,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontFamily: 'Poppins'),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showFactureModal();
+                },
+                icon: const Icon(Icons.assignment_turned_in_rounded),
+                label: Text(
+                  'Langsung Verifikasi Invoice ($targetName)',
+                  style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Lihat Peta / Detail Dulu', style: TextStyle(fontFamily: 'Poppins', fontSize: 12)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _formatRupiah(double val) {

@@ -41,11 +41,7 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
 
   final ImagePicker _picker = ImagePicker();
 
-  @override
-  void initState() {
-    super.initState();
-    _initInvoices();
-  }
+
 
   void _initInvoices() {
     _invoices = [];
@@ -304,6 +300,43 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
     }
   }
 
+  late TextEditingController _recipientNameController;
+  late TextEditingController _recipientPhoneController;
+  late TextEditingController _catatanController;
+
+  String _driverName = 'Driver K-24';
+  int _driverId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _recipientNameController = TextEditingController(text: widget.order.customerName);
+    _recipientPhoneController = TextEditingController(text: widget.order.customerPhone);
+    _catatanController = TextEditingController(text: widget.order.extraItemsNote);
+    _initInvoices();
+    _loadDriverInfo();
+  }
+
+  @override
+  void dispose() {
+    _recipientNameController.dispose();
+    _recipientPhoneController.dispose();
+    _catatanController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDriverInfo() async {
+    try {
+      final dashboard = await ApiService.getDashboard();
+      if (mounted) {
+        setState(() {
+          _driverName = dashboard.driver.name.isNotEmpty ? dashboard.driver.name : 'Driver K-24';
+          _driverId = dashboard.driver.id;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _sendWhatsAppReport(String checkedPayload) async {
     const waNumber = '6287877807780';
     final now = DateTime.now();
@@ -311,7 +344,6 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
     final pickupTimeStr = '${widget.order.createdAt.hour.toString().padLeft(2, '0')}:${widget.order.createdAt.minute.toString().padLeft(2, '0')} WIB';
 
-    const driverName = 'Driver K-24';
     final apotekName = widget.order.customerName.isNotEmpty
         ? widget.order.customerName
         : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
@@ -319,28 +351,39 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
     final invoiceListText = _invoices.map((inv) {
       final stat = _invoiceStatuses[inv] ?? 'done';
       final note = stat == 'missing' ? ' (Tidak Sesuai: ${_missingNotes[inv]})' : '';
-      return '• $inv: ${stat.toUpperCase()}$note';
+      return '- $inv: ${stat.toUpperCase()}$note';
     }).join('\n');
 
-    final message = '''📦 *LAPORAN REALTIME PENGANTARAN OBAT APOTEK K-24*
--------------------------------------------------
-🗓 *Tanggal Pengiriman*: $dateStr
-⏰ *Jam Pickup*: $pickupTimeStr
-⏱ *Selesai Unboxing*: $timeStr
+    final recipientName = _recipientNameController.text.trim().isNotEmpty
+        ? _recipientNameController.text.trim()
+        : widget.order.customerName;
+    final recipientPhone = _recipientPhoneController.text.trim().isNotEmpty
+        ? _recipientPhoneController.text.trim()
+        : widget.order.customerPhone;
+    final catatan = _catatanController.text.trim().isNotEmpty
+        ? _catatanController.text.trim()
+        : (checkedPayload.contains('Tidak Sesuai') ? checkedPayload : 'Semua invoice sesuai & terverifikasi');
 
-👤 *Nama Driver*: $driverName
-📍 *Tujuan Alamat*:
-• *Nama Apotek*: $apotekName
-• *Alamat Pengiriman*: ${widget.order.deliveryAddress}
-• *No. Order*: ${widget.order.orderNumber} ${widget.order.dispatchId.isNotEmpty ? '(${widget.order.dispatchId})' : ''}
+    final driverTag = _driverId != 0 ? '$_driverName (ID: $_driverId)' : _driverName;
 
-📑 *Rincian Invoice Terverifikasi*:
+    final message = '''K24 JAKARTA
+REALTIME REPORT
+Tanggal pengiriman: $dateStr
+——————————————————————
+ID apotek: $apotekName
+Alamat pengiriman: ${widget.order.deliveryAddress}
+No order: ${widget.order.orderNumber}
+ID driver: $driverTag
+Jam pickup: $pickupTimeStr
+Jam delivery: $timeStr
+——————————————————————
+Daftar invoice:
 $invoiceListText
-• *Status Unboxing*: ✅ LENGKAP & TERVERIFIKASI
-
--------------------------------------------------
-📌 *Laporan Otomatis*: Dikirim dari Aplikasi K-24 Driver OTMS.
-''';
+Catatan: $catatan
+——————————————————————
+Penerima:
+Nama: $recipientName
+No telp: $recipientPhone''';
 
     final encodedMessage = Uri.encodeComponent(message);
     final waUrl = Uri.parse('https://wa.me/$waNumber?text=$encodedMessage');
@@ -600,6 +643,76 @@ $invoiceListText
                 ),
               );
             }),
+
+            gapH16,
+
+            // Data Penerima & Catatan Card (Wajib diisi/diverifikasi driver)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 6, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.person_outline_rounded, color: AppColors.secondaryBlue, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Data Penerima & Catatan (Untuk WA Realtime)',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins', color: AppColors.darkGrey),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Nama Penerima (Apoteker / Petugas)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: _recipientNameController,
+                    decoration: InputDecoration(
+                      hintText: 'Nama penerima barang...',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontFamily: 'Poppins'),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    style: const TextStyle(fontSize: 12, fontFamily: 'Poppins'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('No. Telp Penerima', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: _recipientPhoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      hintText: 'Nomor HP/WA penerima...',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontFamily: 'Poppins'),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    style: const TextStyle(fontSize: 12, fontFamily: 'Poppins'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Catatan Pengiriman (Opsional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: _catatanController,
+                    decoration: InputDecoration(
+                      hintText: 'Catatan/keterangan pengiriman...',
+                      hintStyle: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontFamily: 'Poppins'),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    style: const TextStyle(fontSize: 12, fontFamily: 'Poppins'),
+                  ),
+                ],
+              ),
+            ),
 
             gapH16,
 
