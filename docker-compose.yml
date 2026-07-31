@@ -56,7 +56,8 @@ services:
       - "9002:3000"
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: http://localhost:9001
+      BACKEND_INTERNAL_URL: http://backend:8087
+      NEXT_PUBLIC_API_URL: http://103.236.140.19:9001
     depends_on:
       - backend
     networks:
