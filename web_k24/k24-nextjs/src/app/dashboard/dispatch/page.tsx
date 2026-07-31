@@ -18,6 +18,8 @@ interface Stop {
   mitra_id?: number
   parent_order_number?: string
   dispatch_id?: string
+  lat?: number
+  lng?: number
 }
 
 interface DispatchCard {
@@ -106,36 +108,87 @@ export default function DispatchPage() {
     })
   }, [allStops, mitraFilter, armadaFilter, searchQuery])
 
-  // Re-generate default cards grouped by batch/dispatch_id
+  // ─── Proximity Clustering ───────────────────────────────────────────
+  // Haversine formula: distance in km between two lat/lng points
+  const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371
+    const dLat = ((lat2 - lat1) * Math.PI) / 180
+    const dLng = ((lng2 - lng1) * Math.PI) / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2)
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+
+  // Group stops into clusters of max `maxSize` by nearest-neighbor proximity.
+  // Stops with no coordinates (lat=0, lng=0) are bucketed by parent_order_number instead.
+  const clusterByProximity = (stops: Stop[], maxSize = 4): Stop[][] => {
+    const withCoords = stops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
+    const noCoords = stops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
+
+    const clusters: Stop[][] = []
+    const assigned = new Set<number>()
+
+    for (let i = 0; i < withCoords.length; i++) {
+      const seed = withCoords[i]
+      if (assigned.has(seed.id)) continue
+
+      const cluster: Stop[] = [seed]
+      assigned.add(seed.id)
+
+      // Build a sorted list of unassigned neighbours by distance from seed
+      const neighbours = withCoords
+        .filter((s) => !assigned.has(s.id))
+        .map((s) => ({ stop: s, dist: haversineKm(seed.lat!, seed.lng!, s.lat!, s.lng!) }))
+        .sort((a, b) => a.dist - b.dist)
+
+      for (const { stop } of neighbours) {
+        if (cluster.length >= maxSize) break
+        if (!assigned.has(stop.id)) {
+          cluster.push(stop)
+          assigned.add(stop.id)
+        }
+      }
+      clusters.push(cluster)
+    }
+
+    // Fallback: group no-coord stops by parent_order_number, max maxSize each
+    const noCoordGroups = new Map<string, Stop[]>()
+    noCoords.forEach((s) => {
+      const key = s.parent_order_number || s.order_number
+      if (!noCoordGroups.has(key)) noCoordGroups.set(key, [])
+      noCoordGroups.get(key)!.push(s)
+    })
+    noCoordGroups.forEach((group) => {
+      for (let i = 0; i < group.length; i += maxSize) {
+        clusters.push(group.slice(i, i + maxSize))
+      }
+    })
+
+    return clusters
+  }
+
+  // Re-generate default cards using proximity clustering
   useEffect(() => {
     if (filteredStops.length === 0) {
       setCards([])
       return
     }
-    
-    const groupsMap = new Map<string, Stop[]>()
-    filteredStops.forEach((stop) => {
-      const key = stop.dispatch_id || stop.parent_order_number || `ORDER-${stop.id}`
-      if (!groupsMap.has(key)) groupsMap.set(key, [])
-      groupsMap.get(key)!.push(stop)
-    })
 
-    const newCards: DispatchCard[] = []
-    let cardNum = 1
-    groupsMap.forEach((stops, batchKey) => {
-      const CHUNK_SIZE = 4
-      for (let i = 0; i < stops.length; i += CHUNK_SIZE) {
-        const chunk = stops.slice(i, i + CHUNK_SIZE)
-        const armadaTag = chunk[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
-        newCards.push({
-          id: `card-${batchKey}-${i}`,
-          title: `Card Cluster #${cardNum} [${batchKey}] (${armadaTag} — ${chunk.length} Alamat)`,
-          stops: chunk,
-        })
-        cardNum++
+    const clusters = clusterByProximity(filteredStops, 4)
+    const newCards: DispatchCard[] = clusters.map((cluster, idx) => {
+      const armadaTag = cluster[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
+      return {
+        id: `card-cluster-${idx}-${cluster[0]?.id}`,
+        title: `Card Cluster #${idx + 1} (${armadaTag} — ${cluster.length} Alamat)`,
+        stops: cluster,
       }
     })
     setCards(newCards)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredStops])
 
   const filteredDrivers = useMemo(() =>

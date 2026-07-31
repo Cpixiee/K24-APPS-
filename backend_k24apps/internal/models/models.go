@@ -328,6 +328,8 @@ type PendingDispatchStop struct {
 	DeliveryAddress string   `json:"delivery_address"`
 	Invoices        []string `json:"invoices"`
 	DeliveryFee     float64  `json:"delivery_fee"`
+	Lat             float64  `json:"lat"`
+	Lng             float64  `json:"lng"`
 }
 
 // CreateDispatchGroupRequest represents payload from Admin to dispatch single/bulk orders

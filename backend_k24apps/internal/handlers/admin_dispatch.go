@@ -17,13 +17,15 @@ import (
 func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 	ctx := context.Background()
 
-	// Select orders waiting for dispatch
+	// Select orders waiting for dispatch — LEFT JOIN alamat_penerima for proximity clustering
 	query := `
 	SELECT o.id, o.order_number, COALESCE(o.dispatch_id, '') as dispatch_id, o.mitra_id, COALESCE(u.name, 'Mitra Apotek') as mitra_name,
 	       o.pharmacy_name, o.pharmacy_address, o.delivery_address,
-	       o.customer_name, o.customer_phone, o.medicine_summary, o.delivery_fee, o.created_at
+	       o.customer_name, o.customer_phone, o.medicine_summary, o.delivery_fee, o.created_at,
+	       COALESCE(ap.latitude, 0.0) as lat, COALESCE(ap.longitude, 0.0) as lng
 	FROM orders o
 	LEFT JOIN users u ON o.mitra_id = u.id
+	LEFT JOIN alamat_penerima ap ON ap.nama_apotek = o.customer_name AND ap.alamat_lengkap = o.delivery_address
 	WHERE o.driver_id IS NULL AND o.status IN ('PENDING', 'PICKING_UP')
 	ORDER BY o.dispatch_id ASC, o.created_at DESC;`
 
@@ -49,10 +51,12 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 		var pName, pAddr, dAddr, cName, cPhone, medSummary string
 		var dFee float64
 		var cTime time.Time
+		var lat, lng float64
 
 		err := rows.Scan(
 			&oID, &oNum, &dispID, &mID, &mName,
 			&pName, &pAddr, &dAddr, &cName, &cPhone, &medSummary, &dFee, &cTime,
+			&lat, &lng,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -87,6 +91,8 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 			DeliveryAddress: dAddr,
 			Invoices:        invoices,
 			DeliveryFee:     dFee,
+			Lat:             lat,
+			Lng:             lng,
 		}
 
 		if batch, exists := batchMap[dispID]; exists {
