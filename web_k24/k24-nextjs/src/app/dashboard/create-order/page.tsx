@@ -7,6 +7,7 @@ import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
 import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, Search, Loader2, CheckCircle, HelpCircle, X, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import * as XLSX from 'xlsx'
 
 const INITIAL_ROW = () => ({
   id: Date.now() + Math.random(),
@@ -169,44 +170,65 @@ export default function CreateOrderPage() {
     return result
   }
 
-  const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
     const reader = new FileReader()
     reader.onload = (evt) => {
-      const lines = (evt.target?.result as string).split('\n')
-      const parsed: OrderRow[] = []
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim()
-        if (!line) continue
-        const parts = parseCSVLine(line)
-        if (parts.length >= 2) {
-          const nama = parts[0].replace(/^"|"$/g, '').trim()
-          const alamat = parts[1].replace(/^"|"$/g, '').trim()
-          const invStr = parts[2]?.replace(/^"|"$/g, '').trim() || ''
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+
+        // Automatically pick the first sheet/page (Sheet 1) containing address & invoice data
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
+
+        // Convert worksheet to 2D array of rows
+        const rowsData = XLSX.utils.sheet_to_json<Array<string | number>>(worksheet, { header: 1 })
+
+        const parsed: OrderRow[] = []
+
+        // Iterate starting from row index 1 (skipping header row 0)
+        for (let i = 1; i < rowsData.length; i++) {
+          const row = rowsData[i]
+          if (!row || row.length === 0) continue
+
+          const nama = String(row[0] ?? '').trim()
+          const alamat = String(row[1] ?? '').trim()
+          if (!nama && !alamat) continue
+
+          const invStr = String(row[2] ?? '').trim()
           const invoices = invStr ? invStr.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) : []
+          const kubik = row[3] !== undefined && row[3] !== null ? String(row[3]).trim() : ''
+          const berat = row[4] !== undefined && row[4] !== null ? String(row[4]).trim() : ''
+
           parsed.push({
-            id: Date.now() + i,
+            id: Date.now() + i + Math.random(),
             nama_apotek: nama,
             alamat_lengkap: alamat,
             invoices,
-            kubik_aktual: parts[3]?.trim() || '',
-            berat_aktual: parts[4]?.trim() || '',
+            kubik_aktual: kubik,
+            berat_aktual: berat,
             latitude: 0,
             longitude: 0,
           })
         }
-      }
-      if (parsed.length > 0) {
-        setRows(parsed)
-        toast.success(`Berhasil mengimpor ${parsed.length} baris data dari CSV!`)
-        calcPreview(parsed)
-        setStep(3)
-      } else {
-        toast.error('Format CSV salah. Gunakan: Nama Apotek, Alamat, Invoice1;Invoice2, Kubik, Berat')
+
+        if (parsed.length > 0) {
+          setRows(parsed)
+          toast.success(`Berhasil mengimpor ${parsed.length} baris data dari ${file.name} (Sheet 1: ${firstSheetName})!`)
+          calcPreview(parsed)
+          setStep(3)
+        } else {
+          toast.error('Format file salah atau kosong. Gunakan kolom: Nama Apotek, Alamat, Invoice, Kubik, Berat')
+        }
+      } catch (err) {
+        console.error('Error parsing file:', err)
+        toast.error(`Gagal membaca file ${file.name}. Pastikan format file Excel (.xlsx/.xls) atau CSV benar.`)
       }
     }
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
   }
 
   const handleSubmit = async () => {
@@ -446,7 +468,7 @@ export default function CreateOrderPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
             {[
               { key: 'manual', label: 'Input Manual', icon: '⌨️', desc: 'Isi data pengiriman satu per satu menggunakan form tabel dengan lookup database apotek.' },
-              { key: 'csv', label: 'Upload CSV', icon: '📂', desc: 'Upload file CSV untuk mengimpor banyak data pengiriman sekaligus secara efisien.' },
+              { key: 'csv', label: 'Upload Excel / CSV', icon: '📊', desc: 'Upload file Excel (.xlsx, .xls) atau CSV untuk mengimpor banyak data pengiriman sekaligus.' },
             ].map((m) => {
               const isSelected = inputMethod === m.key
               let displayClass = ''
@@ -482,17 +504,17 @@ export default function CreateOrderPage() {
               <div className="md:col-span-2 mt-2 space-y-3">
                 <label className="flex flex-col items-center justify-center gap-3 h-36 rounded-2xl border-2 border-dashed border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10 cursor-pointer hover:bg-amber-50/50 transition-all text-amber-600 dark:text-amber-500">
                   <Upload className="h-8 w-8 text-amber-500" />
-                  <span className="text-sm text-muted-foreground font-medium">Klik untuk upload file CSV</span>
-                  <input type="file" accept=".csv" className="hidden" onChange={handleCSV} />
+                  <span className="text-sm text-muted-foreground font-medium">Klik untuk upload file Excel (.xlsx / .xls) atau CSV</span>
+                  <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileImport} />
                 </label>
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2">
-                  <p className="text-xs text-muted-foreground">Format: Nama Apotek, Alamat, Invoice1;Invoice2, Kubik, Berat</p>
+                  <p className="text-xs text-muted-foreground">Format Kolom: Nama Apotek, Alamat, Invoice1;Invoice2, Kubik, Berat</p>
                   <a
                     href="/sample_order_k24.csv"
                     download="sample_order_k24.csv"
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline"
                   >
-                    <span>📥 Download File Contoh CSV</span>
+                    <span>📥 Download File Contoh Format</span>
                   </a>
                 </div>
               </div>
