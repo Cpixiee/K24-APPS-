@@ -1,0 +1,52 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+
+# Web Next.js / Node
+**/node_modules/
+**/.next/
+**/out/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Go Binaries & Environment
+backend_k24apps/main
+backend_k24apps/backend_k24apps
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Editor / IDE
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Flutter/Dart/Pub
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Android
+/android/app/debug
+/android/app/profile
+/android/app/release

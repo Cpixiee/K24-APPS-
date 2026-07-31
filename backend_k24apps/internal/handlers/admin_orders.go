@@ -1,0 +1,1688 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/rand"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"backend_k24apps/internal/models"
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// GetRecipients lists all master recipients from alamat_penerima (autocomplete source).
+func (h *AdminHandler) GetRecipients(c *gin.Context) {
+	ctx := context.Background()
+	rows, err := h.DB.Query(ctx,
+		`SELECT id, nama_apotek, alamat_lengkap, latitude, longitude FROM alamat_penerima ORDER BY nama_apotek ASC;`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memuat daftar master alamat penerima: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	recipients := []models.Recipient{}
+	for rows.Next() {
+		var rec models.Recipient
+		if err := rows.Scan(&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude); err == nil {
+			recipients = append(recipients, rec)
+		}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Master alamat penerima berhasil diambil", Data: recipients})
+}
+
+// CreateOrder creates a single new delivery order.
+func (h *AdminHandler) CreateOrder(c *gin.Context) {
+	var req models.CreateOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	orderNumber := fmt.Sprintf("ORD-%d", r.Intn(900000)+100000)
+
+	// Ensure uniqueness
+	for {
+		var exists bool
+		if err := h.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM orders WHERE order_number = $1)", orderNumber).Scan(&exists); err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memeriksa keunikan nomor order"})
+			return
+		}
+		if !exists {
+			break
+		}
+		orderNumber = fmt.Sprintf("ORD-%d", r.Intn(900000)+100000)
+	}
+
+	insertQuery := `
+	INSERT INTO orders (order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee)
+	VALUES ($1, 'PICKING_UP', $2, $3, $4, $5, $6, $7, $8)
+	RETURNING id, order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, created_at;`
+
+	var order models.Order
+	err := h.DB.QueryRow(ctx, insertQuery,
+		orderNumber, req.PharmacyName, req.PharmacyAddress, req.DeliveryAddress,
+		req.CustomerName, req.CustomerPhone, req.MedicineSummary, req.DeliveryFee,
+	).Scan(&order.ID, &order.OrderNumber, &order.Status, &order.PharmacyName,
+		&order.PharmacyAddress, &order.DeliveryAddress, &order.CustomerName,
+		&order.CustomerPhone, &order.MedicineSummary, &order.DeliveryFee, &order.CreatedAt)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan order: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.APIResponse{Status: "success", Message: "Order berhasil dibuat", Data: order})
+}
+
+type resolvedBulkItem struct {
+	item      models.BulkOrderItemInput
+	latitude  float64
+	longitude float64
+}
+
+func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolvedBulkItem) []resolvedBulkItem {
+	if len(items) <= 1 {
+		return items
+	}
+
+	remaining := make([]resolvedBulkItem, len(items))
+	copy(remaining, items)
+
+	sorted := make([]resolvedBulkItem, 0, len(items))
+	currLat, currLng := originLat, originLng
+
+	for len(remaining) > 0 {
+		bestIdx := 0
+		bestDist := math.MaxFloat64
+
+		for i, r := range remaining {
+			dist := haversineDist(currLat, currLng, r.latitude, r.longitude)
+			if dist < bestDist {
+				bestDist = dist
+				bestIdx = i
+			}
+		}
+
+		chosen := remaining[bestIdx]
+		sorted = append(sorted, chosen)
+
+		currLat = chosen.latitude
+		currLng = chosen.longitude
+
+		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+	}
+
+	return sorted
+}
+
+func haversineDist(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * math.Pi / 180.0
+	dLon := (lon2 - lon1) * math.Pi / 180.0
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180.0)*math.Cos(lat2*math.Pi/180.0)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
+// CalculateOrderPrice pre-calculates pricing for proposed delivery stops.
+func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
+	var req models.CalculateOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{Status: "error", Message: "Sesi tidak valid"})
+		return
+	}
+	userID := userIDVal.(int)
+	ctx := context.Background()
+
+	originLat, originLong, activeRate := loadMitraRates(h.DB, ctx, userID, req.Armada, req.RateType)
+
+	// Resolve lat/lng for all items first
+	resolved := []resolvedBulkItem{}
+	for _, item := range req.Items {
+		var destLat, destLng float64
+		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
+		if rec != nil {
+			destLat = rec.Latitude
+			destLng = rec.Longitude
+		} else {
+			var geocodeErr error
+			destLat, destLng, geocodeErr = geocodeAddress(item.AlamatLengkap, originLat, originLong)
+			if geocodeErr != nil {
+				destLat = originLat + 0.05
+				destLng = originLong + 0.05
+			}
+		}
+		resolved = append(resolved, resolvedBulkItem{
+			item: models.BulkOrderItemInput{
+				NamaApotek:    item.NamaApotek,
+				AlamatLengkap: item.AlamatLengkap,
+				KubikAktual:   item.KubikAktual,
+				BeratAktual:   item.BeratAktual,
+			},
+			latitude:  destLat,
+			longitude: destLng,
+		})
+	}
+
+	// Sort items by nearest neighbor route sequence
+	sorted := sortBulkItemsNearestNeighbor(originLat, originLong, resolved)
+
+	response := models.CalculateOrderResponse{
+		Items:      []models.CalculatedItemResult{},
+		TotalPrice: 0,
+	}
+
+	for i, r := range sorted {
+		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
+		rowPrice := calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
+
+		response.Items = append(response.Items, models.CalculatedItemResult{
+			NamaApotek:    r.item.NamaApotek,
+			AlamatLengkap: r.item.AlamatLengkap,
+			JarakKm:       math.Round(distKm*100) / 100,
+			Price:         math.Round(rowPrice),
+		})
+		response.TotalPrice += math.Round(rowPrice)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Kalkulasi argo berhasil dihitung", Data: response})
+}
+
+// CreateBulkOrders saves an array of delivery stops as a single dispatch batch.
+func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
+	var req models.CreateBulkOrdersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{Status: "error", Message: "Sesi tidak valid"})
+		return
+	}
+	userID := userIDVal.(int)
+	ctx := context.Background()
+
+	// Load mitra pickup location
+	var originName, originAddress string
+	var originLat, originLong float64
+	if err := h.DB.QueryRow(ctx,
+		"SELECT pickup_name, alamat_lengkap, pickup_lat, pickup_long FROM mitra_profiles WHERE user_id = $1", userID,
+	).Scan(&originName, &originAddress, &originLat, &originLong); err != nil {
+		originName = "K-24 Hub"
+		originAddress = "Jl. Kaliurang KM 5, Yogyakarta"
+		originLat = -7.782889
+		originLong = 110.377042
+	}
+
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memulai transaksi database"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Auto-increment dispatch ID from any existing orders (regardless of ORD-, ORDER-, or DSP- prefix)
+	var maxNum int
+	_ = tx.QueryRow(ctx, `
+		SELECT COALESCE(
+			MAX(GREATEST(
+				CAST(NULLIF(REGEXP_REPLACE(parent_order_number, '\D', '', 'g'), '') AS INTEGER),
+				CAST(NULLIF(REGEXP_REPLACE(dispatch_id, '\D', '', 'g'), '') AS INTEGER)
+			)), 
+			0
+		) FROM orders;
+	`).Scan(&maxNum)
+	nextNum := maxNum + 1
+	orderBaseNumber := fmt.Sprintf("ORDER-%06d", nextNum)
+
+	_, activeRate := loadMitraRatesFromDB(h.DB, ctx, userID, req.Armada, req.RateType)
+
+	// Resolve lat/lng for all items first
+	resolved := []resolvedBulkItem{}
+	for _, item := range req.Items {
+		var finalLat, finalLng float64
+		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
+		if rec != nil {
+			finalLat = rec.Latitude
+			finalLng = rec.Longitude
+		} else {
+			finalLat = item.Latitude
+			finalLng = item.Longitude
+			if finalLat == 0 && finalLng == 0 {
+				finalLat, finalLng, _ = geocodeAddress(item.AlamatLengkap, originLat, originLong)
+			}
+			insertRecipient := `INSERT INTO alamat_penerima (nama_apotek, alamat_lengkap, latitude, longitude) VALUES ($1, $2, $3, $4);`
+			_, _ = tx.Exec(ctx, insertRecipient, item.NamaApotek, item.AlamatLengkap, finalLat, finalLng)
+		}
+		resolved = append(resolved, resolvedBulkItem{
+			item:      item,
+			latitude:  finalLat,
+			longitude: finalLng,
+		})
+	}
+
+	// Sort items by nearest neighbor route sequence
+	sorted := sortBulkItemsNearestNeighbor(originLat, originLong, resolved)
+
+	savedOrders := []models.Order{}
+
+	for i, r := range sorted {
+		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
+		rowPrice := math.Round(calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i))
+
+		summary := buildSummary(req.Armada, req.RateType, r.item.Invoices)
+		rowOrderNumber := fmt.Sprintf("%s-%d", orderBaseNumber, i+1)
+
+		insertOrderQuery := `
+		INSERT INTO orders (order_number, parent_order_number, mitra_id, dispatch_id, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, distance_km)
+		VALUES ($1, $2, $3, '', 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, order_number, parent_order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, distance_km, created_at;`
+
+		var order models.Order
+		err = tx.QueryRow(ctx, insertOrderQuery,
+			rowOrderNumber, orderBaseNumber, userID,
+			originName, originAddress, r.item.AlamatLengkap,
+			r.item.NamaApotek, "08123456789", summary, rowPrice, distKm,
+		).Scan(&order.ID, &order.OrderNumber, &order.ParentOrderNumber, &order.Status, &order.PharmacyName,
+			&order.PharmacyAddress, &order.DeliveryAddress, &order.CustomerName,
+			&order.CustomerPhone, &order.MedicineSummary, &order.DeliveryFee, &order.DistanceKM, &order.CreatedAt)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Gagal mendaftarkan item order ke-%d: %s", i+1, err.Error()),
+			})
+			return
+		}
+		savedOrders = append(savedOrders, order)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan batch order ke database"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.APIResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("%d order berhasil dibuat secara bulk!", len(savedOrders)),
+		Data:    savedOrders,
+	})
+}
+
+// GetFlatInvoices returns every invoice as its own flat row across all orders.
+// Format per row: invoice_no, nama_apotek, driver_name, status (DONE/MISSING), catatan, created_at, dispatch_id.
+func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
+	ctx := context.Background()
+	roleVal, _ := c.Get("role")
+	role := roleVal.(string)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(int)
+
+	// Pick up optional ?date= query param (format: YYYY-MM-DD)
+	dateFilter := c.Query("date") // e.g. "2026-07-24"
+
+	baseQuery := `
+	SELECT COALESCE(NULLIF(o.parent_order_number, ''), o.order_number) as parent_order_number,
+	       o.medicine_summary, o.checked_invoices,
+	       COALESCE(o.delivery_address, '') as delivery_address,
+	       COALESCE(u_driver.name, '') as driver_name,
+	       o.created_at, o.status, COALESCE(o.dispatch_id, '') as dispatch_id,
+	       COALESCE(o.customer_name, '') as customer_name
+	FROM orders o
+	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
+	WHERE 1=1`
+
+	if role == "MITRA" {
+		baseQuery += ` AND o.mitra_id = $1`
+	}
+	if dateFilter != "" {
+		if role == "MITRA" {
+			baseQuery += ` AND DATE(o.created_at) = $2`
+		} else {
+			baseQuery += ` AND DATE(o.created_at) = $1`
+		}
+	}
+	baseQuery += ` ORDER BY o.created_at DESC;`
+
+	var rows interface {
+		Next() bool
+		Scan(...interface{}) error
+		Err() error
+		Close()
+	}
+	var err error
+	if role == "MITRA" {
+		if dateFilter != "" {
+			rows, err = h.DB.Query(ctx, baseQuery, userID, dateFilter)
+		} else {
+			rows, err = h.DB.Query(ctx, baseQuery, userID)
+		}
+	} else {
+		if dateFilter != "" {
+			rows, err = h.DB.Query(ctx, baseQuery, dateFilter)
+		} else {
+			rows, err = h.DB.Query(ctx, baseQuery)
+		}
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil data invoice: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type FlatInvoiceRow struct {
+		InvoiceNo    string    `json:"invoice_no"`
+		NamaApotek   string    `json:"nama_apotek"`
+		DriverName   string    `json:"driver_name"`
+		Status       string    `json:"status"`    // "DONE" atau "MISSING"
+		Catatan      string    `json:"catatan"`   // "" for DONE, reason for MISSING
+		CreatedAt    time.Time `json:"created_at"`
+		DispatchID   string    `json:"dispatch_id"`
+	}
+
+	var result []FlatInvoiceRow
+
+	for rows.Next() {
+		var parentOrderNumber, medicineSummary, checkedInvoices, deliveryAddress, driverName, orderStatus, dispatchID, customerName string
+		var createdAt time.Time
+
+		if err := rows.Scan(&parentOrderNumber, &medicineSummary, &checkedInvoices,
+			&deliveryAddress, &driverName, &createdAt, &orderStatus, &dispatchID, &customerName); err != nil {
+			continue
+		}
+
+		// Determine apotek name from customer_name (delivery address recipient)
+		namaApotek := customerName
+		if namaApotek == "" {
+			namaApotek = deliveryAddress
+		}
+
+		// Parse invoice list from medicine_summary: "... Invoices: INV-001, INV-002, ..."
+		var invoiceList []string
+		if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
+			for _, inv := range strings.Split(parts[1], ", ") {
+				inv = strings.TrimSpace(inv)
+				if inv != "" {
+					invoiceList = append(invoiceList, inv)
+				}
+			}
+		}
+
+		// Parse checked_invoices: "INV-001: DONE; INV-002: MISSING (Hilang: catatan); INV-003: DONE"
+		checkedMap := map[string]struct{ Status, Catatan string }{}
+		if checkedInvoices != "" {
+			for _, entry := range strings.Split(checkedInvoices, "; ") {
+				entry = strings.TrimSpace(entry)
+				if entry == "" {
+					continue
+				}
+				// Split on first ": "
+				colonIdx := strings.Index(entry, ": ")
+				if colonIdx < 0 {
+					continue
+				}
+				invNo := strings.TrimSpace(entry[:colonIdx])
+				rest := strings.TrimSpace(entry[colonIdx+2:])
+
+				var status, catatan string
+				if strings.HasPrefix(rest, "MISSING") {
+					status = "MISSING"
+					// Extract note in parentheses e.g. (Hilang: barang kurang)
+					if parenStart := strings.Index(rest, "("); parenStart >= 0 {
+						catatan = strings.TrimRight(rest[parenStart+1:], ")")
+					}
+				} else {
+					status = "DONE"
+					catatan = "Done"
+				}
+				checkedMap[invNo] = struct{ Status, Catatan string }{status, catatan}
+			}
+		}
+
+		// Expand: one row per invoice
+		for _, invNo := range invoiceList {
+			statusInfo, found := checkedMap[invNo]
+			if !found {
+				statusInfo = struct{ Status, Catatan string }{"PENDING", "Belum diperiksa"}
+			}
+			result = append(result, FlatInvoiceRow{
+				InvoiceNo:  invNo,
+				NamaApotek: namaApotek,
+				DriverName: driverName,
+				Status:     statusInfo.Status,
+				Catatan:    statusInfo.Catatan,
+				CreatedAt:  createdAt,
+				DispatchID: dispatchID,
+			})
+		}
+
+		// If no invoices parsed but order exists, add placeholder row
+		if len(invoiceList) == 0 {
+			status := "PENDING"
+			catatan := "Belum diperiksa"
+			if checkedInvoices != "" {
+				status = "DONE"
+				catatan = "Done"
+			}
+			result = append(result, FlatInvoiceRow{
+				InvoiceNo:  parentOrderNumber,
+				NamaApotek: namaApotek,
+				DriverName: driverName,
+				Status:     status,
+				Catatan:    catatan,
+				CreatedAt:  createdAt,
+				DispatchID: dispatchID,
+			})
+		}
+	}
+
+	if result == nil {
+		result = []FlatInvoiceRow{}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Berhasil mengambil %d baris invoice", len(result)),
+		Data:    result,
+	})
+}
+
+// GetOrders returns all bulk orders (grouped by parent_order_number).
+// ADMIN sees all; MITRA sees only their own.
+func (h *AdminHandler) GetOrders(c *gin.Context) {
+	ctx := context.Background()
+	roleVal, _ := c.Get("role")
+	role := roleVal.(string)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(int)
+
+	type OrderSummary struct {
+		DispatchID   string    `json:"dispatch_id"`
+		MitraID      int       `json:"mitra_id"`
+		MitraName    string    `json:"mitra_name"`
+		CreatedAt    time.Time `json:"created_at"`
+		StopCount    int       `json:"stop_count"`
+		TotalFee     float64   `json:"total_fee"`
+		Status       string    `json:"status"`
+		IsDispatched bool      `json:"is_dispatched"`
+		DriverName   string    `json:"driver_name"`
+		DriverPhone  string    `json:"driver_phone"`
+		Addresses    string    `json:"addresses"`
+	}
+
+	adminQuery := `
+	SELECT COALESCE(NULLIF(o.dispatch_id, ''), o.parent_order_number) as dispatch_id, o.mitra_id, COALESCE(u.name,'') as mitra_name,
+	       MIN(o.created_at) as created_at, COUNT(o.id) as stop_count,
+	       SUM(o.delivery_fee) as total_fee, MAX(o.status) as status,
+	       BOOL_OR(o.driver_id IS NOT NULL) as is_dispatched,
+	       COALESCE(MAX(d.name), '') as driver_name,
+	       COALESCE(MAX(d.phone), '') as driver_phone,
+	       COALESCE(STRING_AGG(o.delivery_address, ', '), '') as addresses
+	FROM orders o
+	LEFT JOIN users u ON u.id = o.mitra_id
+	LEFT JOIN users d ON d.id = o.driver_id
+	WHERE o.parent_order_number IS NOT NULL AND o.parent_order_number != ''
+	GROUP BY COALESCE(NULLIF(o.dispatch_id, ''), o.parent_order_number), o.mitra_id, u.name
+	ORDER BY MIN(o.created_at) DESC;`
+
+	mitraQuery := `
+	SELECT COALESCE(NULLIF(o.dispatch_id, ''), o.parent_order_number) as dispatch_id, o.mitra_id, COALESCE(u.name,'') as mitra_name,
+	       MIN(o.created_at) as created_at, COUNT(o.id) as stop_count,
+	       SUM(o.delivery_fee) as total_fee, MAX(o.status) as status,
+	       BOOL_OR(o.driver_id IS NOT NULL) as is_dispatched,
+	       COALESCE(MAX(d.name), '') as driver_name,
+	       COALESCE(MAX(d.phone), '') as driver_phone,
+	       COALESCE(STRING_AGG(o.delivery_address, ', '), '') as addresses
+	FROM orders o
+	LEFT JOIN users u ON u.id = o.mitra_id
+	LEFT JOIN users d ON d.id = o.driver_id
+	WHERE o.mitra_id = $1 AND o.parent_order_number IS NOT NULL AND o.parent_order_number != ''
+	GROUP BY COALESCE(NULLIF(o.dispatch_id, ''), o.parent_order_number), o.mitra_id, u.name
+	ORDER BY MIN(o.created_at) DESC;`
+
+	var pgRows interface {
+		Next() bool
+		Scan(...interface{}) error
+		Err() error
+		Close()
+	}
+	var err error
+
+	if role == "ADMIN" {
+		pgRows, err = h.DB.Query(ctx, adminQuery)
+	} else {
+		pgRows, err = h.DB.Query(ctx, mitraQuery, userID)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil data order: " + err.Error()})
+		return
+	}
+	defer pgRows.Close()
+
+	var summaries []OrderSummary
+	for pgRows.Next() {
+		var s OrderSummary
+		if err := pgRows.Scan(&s.DispatchID, &s.MitraID, &s.MitraName, &s.CreatedAt,
+			&s.StopCount, &s.TotalFee, &s.Status, &s.IsDispatched, &s.DriverName, &s.DriverPhone, &s.Addresses); err != nil {
+			continue
+		}
+		summaries = append(summaries, s)
+	}
+	if summaries == nil {
+		summaries = []OrderSummary{}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Data: summaries})
+}
+
+// GetOrderDetail returns the full breakdown of a single parent order or dispatch ID.
+func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
+	dispatchID := c.Param("dispatch_id")
+	ctx := context.Background()
+	roleVal, _ := c.Get("role")
+	role := roleVal.(string)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(int)
+
+	query := `
+	SELECT o.id, o.order_number, o.status, o.pharmacy_name, o.pharmacy_address,
+	       o.delivery_address, o.customer_name, o.medicine_summary, o.delivery_fee,
+	       o.created_at, o.mitra_id,
+	       COALESCE(o.driver_id, 0) as driver_id,
+	       COALESCE(u_driver.name, '') as driver_name,
+	       COALESCE(u_driver.phone, '') as driver_phone,
+	       COALESCE(dp.plate_number, '') as driver_plate,
+	       COALESCE(dp.vehicle_type, '') as driver_vehicle,
+	       COALESCE(o.distance_km, 0.0) as distance_km,
+	       COALESCE(o.parent_order_number, '') as parent_order_number,
+	       COALESCE(o.dispatch_id, '') as order_dispatch_id,
+	       COALESCE(o.pickup_photo_url, '') as pickup_photo_url,
+	       COALESCE(o.pickup_note, '') as pickup_note,
+	       COALESCE(o.reject_photo_url, '') as reject_photo_url,
+	       COALESCE(o.reject_note, '') as reject_note,
+	       COALESCE(o.reject_reason, '') as reject_reason,
+	       COALESCE(o.reject_approved, false) as reject_approved,
+	       COALESCE(o.unboxing_option, '') as unboxing_option,
+	       COALESCE(o.checked_invoices, '') as checked_invoices,
+	       COALESCE(o.extra_items_note, '') as extra_items_note,
+	       COALESCE(o.extra_items_photo_url, '') as extra_items_photo_url,
+	       COALESCE(o.facture_photo_url, '') as facture_photo_url
+	FROM orders o
+	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
+	LEFT JOIN driver_profiles dp ON dp.user_id = o.driver_id
+	WHERE o.parent_order_number = $1 OR o.dispatch_id = $1`
+	if role == "MITRA" {
+		query += ` AND o.mitra_id = $2`
+	}
+	query += ` ORDER BY o.id;`
+
+	type StopItem struct {
+		ID                  int      `json:"id"`
+		OrderNumber         string   `json:"order_number"`
+		ParentOrderNumber   string   `json:"parent_order_number"`
+		DispatchID          string   `json:"dispatch_id"`
+		Status              string   `json:"status"`
+		NamaApotek          string   `json:"nama_apotek"`
+		Alamat              string   `json:"alamat"`
+		Invoices            []string `json:"invoices"`
+		Fee                 float64  `json:"fee"`
+		DriverID            int      `json:"driver_id"`
+		DriverName          string   `json:"driver_name"`
+		DriverPhone         string   `json:"driver_phone"`
+		DriverPlate         string   `json:"driver_plate"`
+		DriverVehicle       string   `json:"driver_vehicle"`
+		RateType            string   `json:"rate_type"`
+		Armada              string   `json:"armada"`
+		DistanceKM          float64  `json:"distance_km"`
+		PickupPhotoUrl      string   `json:"pickup_photo_url"`
+		PickupNote          string   `json:"pickup_note"`
+		RejectPhotoUrl      string   `json:"reject_photo_url"`
+		RejectNote          string   `json:"reject_note"`
+		RejectReason        string   `json:"reject_reason"`
+		RejectApproved      bool     `json:"reject_approved"`
+		UnboxingOption      string   `json:"unboxing_option"`
+		CheckedInvoices     string   `json:"checked_invoices"`
+		ExtraItemsNote      string   `json:"extra_items_note"`
+		ExtraItemsPhotoUrl  string   `json:"extra_items_photo_url"`
+		FacturePhotoUrl     string   `json:"facture_photo_url"`
+	}
+
+	var pgRows interface {
+		Next() bool
+		Scan(...interface{}) error
+		Err() error
+		Close()
+	}
+	var err error
+	if role == "MITRA" {
+		pgRows, err = h.DB.Query(ctx, query, dispatchID, userID)
+	} else {
+		pgRows, err = h.DB.Query(ctx, query, dispatchID)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil detail order: " + err.Error()})
+		return
+	}
+	defer pgRows.Close()
+
+	var stops []StopItem
+	var grandTotal float64
+	var minCreatedAt time.Time
+	for pgRows.Next() {
+		var s StopItem
+		var mitraID int
+		var medicineSummary string
+		var createdAt time.Time
+		err := pgRows.Scan(
+			&s.ID, &s.OrderNumber, &s.Status, &s.NamaApotek, &s.Alamat, &s.Alamat,
+			&s.NamaApotek, &medicineSummary, &s.Fee, &createdAt, &mitraID, &s.DriverID,
+			&s.DriverName, &s.DriverPhone, &s.DriverPlate, &s.DriverVehicle, &s.DistanceKM,
+			&s.ParentOrderNumber, &s.DispatchID, &s.PickupPhotoUrl, &s.PickupNote,
+			&s.RejectPhotoUrl, &s.RejectNote, &s.RejectReason, &s.RejectApproved,
+			&s.UnboxingOption, &s.CheckedInvoices, &s.ExtraItemsNote, &s.ExtraItemsPhotoUrl,
+			&s.FacturePhotoUrl,
+		)
+		if err != nil {
+			continue
+		}
+		// Parse armada, rate_type, invoices from medicine_summary
+		s.Armada, s.RateType = parseArmadaRate(medicineSummary)
+		if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
+			s.Invoices = strings.Split(parts[1], ", ")
+		}
+		grandTotal += s.Fee
+		stops = append(stops, s)
+
+		if minCreatedAt.IsZero() || createdAt.Before(minCreatedAt) {
+			minCreatedAt = createdAt
+		}
+	}
+	if stops == nil {
+		stops = []StopItem{}
+	}
+
+	// Group by driver
+	type DriverGroup struct {
+		DriverID   int        `json:"driver_id"`
+		DriverName string     `json:"driver_name"`
+		Stops      []StopItem `json:"stops"`
+		TotalFee   float64    `json:"total_fee"`
+	}
+	driverMap := map[int]*DriverGroup{}
+	for _, s := range stops {
+		if _, ok := driverMap[s.DriverID]; !ok {
+			driverMap[s.DriverID] = &DriverGroup{DriverID: s.DriverID, DriverName: s.DriverName}
+		}
+		driverMap[s.DriverID].Stops = append(driverMap[s.DriverID].Stops, s)
+		driverMap[s.DriverID].TotalFee += s.Fee
+	}
+	var driverGroups []DriverGroup
+	for _, dg := range driverMap {
+		driverGroups = append(driverGroups, *dg)
+	}
+
+	batchRateType, batchArmada := "", ""
+	if len(stops) > 0 {
+		batchRateType = stops[0].RateType
+		batchArmada = stops[0].Armada
+	}
+
+	type OrderDetailResponse struct {
+		DispatchID   string        `json:"dispatch_id"`
+		RateType     string        `json:"rate_type"`
+		Armada       string        `json:"armada"`
+		CreatedAt    time.Time     `json:"created_at"`
+		Stops        []StopItem    `json:"stops"`
+		DriverGroups []DriverGroup `json:"driver_groups,omitempty"`
+		GrandTotal   float64       `json:"grand_total"`
+	}
+
+	resp := OrderDetailResponse{
+		DispatchID: dispatchID, RateType: batchRateType, Armada: batchArmada,
+		CreatedAt: minCreatedAt, Stops: stops, GrandTotal: grandTotal,
+	}
+	if role == "ADMIN" {
+		resp.DriverGroups = driverGroups
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Data: resp})
+}
+
+// ─── Helper functions shared across order handlers ────────────────────────────
+
+func calcRowPrice(rateType string, activeRate, distKm float64, kubik, berat *float64, index int) float64 {
+	switch rateType {
+	case "km":
+		return activeRate * distKm
+	case "titik":
+		return activeRate
+	case "dimensi":
+		k := 1.0
+		if kubik != nil {
+			k = *kubik
+		}
+		return activeRate * k
+	case "berat":
+		b := 1.0
+		if berat != nil {
+			b = *berat
+		}
+		return activeRate * b
+	case "lumpsum":
+		if index == 0 {
+			return activeRate
+		}
+		return 0
+	default:
+		return 15000.0
+	}
+}
+
+func buildSummary(armada, rateType string, invoices []string) string {
+	s := fmt.Sprintf("Armada: %s, Rate: %s, Invoices: ", armada, rateType)
+	s += strings.Join(invoices, ", ")
+	return s
+}
+
+func parseArmadaRate(summary string) (armada, rate string) {
+	if ap := strings.SplitN(summary, "Armada: ", 2); len(ap) == 2 {
+		rest := ap[1]
+		if rp := strings.SplitN(rest, ", ", 2); len(rp) > 0 {
+			armada = strings.TrimSpace(rp[0])
+		}
+	}
+	if rp := strings.SplitN(summary, "Rate: ", 2); len(rp) == 2 {
+		rest := rp[1]
+		if kv := strings.SplitN(rest, ",", 2); len(kv) > 0 {
+			rate = strings.TrimSpace(kv[0])
+		}
+	}
+	return
+}
+
+func loadMitraRates(db *pgxpool.Pool, ctx context.Context, userID int, armada, rateType string) (originLat, originLong, activeRate float64) {
+	originLat = -7.782889
+	originLong = 110.377042
+
+	var motorDimensi, motorKm, motorTitik, motorBerat *float64
+	var mobilDimensi, mobilKm, mobilTitik, mobilBerat, mobilLumpsum *float64
+
+	_ = db.QueryRow(ctx, `
+	SELECT pickup_lat, pickup_long,
+	       motor_dimensi, motor_km, motor_titik, motor_berat,
+	       mobil_dimensi, mobil_km, mobil_titik, mobil_berat, mobil_lumpsum
+	FROM mitra_profiles WHERE user_id = $1;`, userID).Scan(
+		&originLat, &originLong,
+		&motorDimensi, &motorKm, &motorTitik, &motorBerat,
+		&mobilDimensi, &mobilKm, &mobilTitik, &mobilBerat, &mobilLumpsum,
+	)
+
+	activeRate = resolveRate(armada, rateType, motorDimensi, motorKm, motorTitik, motorBerat,
+		mobilDimensi, mobilKm, mobilTitik, mobilBerat, mobilLumpsum)
+	return
+}
+
+func loadMitraRatesFromDB(db *pgxpool.Pool, ctx context.Context, userID int, armada, rateType string) (float64, float64) {
+	lat, _, rate := loadMitraRates(db, ctx, userID, armada, rateType)
+	return lat, rate
+}
+
+func resolveRate(armada, rateType string, motDim, motKm, motTit, motBer, mobDim, mobKm, mobTit, mobBer, mobLump *float64) float64 {
+	defaults := map[string]map[string]float64{
+		"motor": {"km": 20000, "titik": 10000, "dimensi": 1333, "berat": 5000},
+		"mobil": {"km": 25000, "titik": 12000, "dimensi": 1500, "berat": 6000, "lumpsum": 500000},
+	}
+
+	var rate float64
+	if armada == "motor" {
+		switch rateType {
+		case "dimensi":
+			if motDim != nil {
+				rate = *motDim
+			}
+		case "km":
+			if motKm != nil {
+				rate = *motKm
+			}
+		case "titik":
+			if motTit != nil {
+				rate = *motTit
+			}
+		case "berat":
+			if motBer != nil {
+				rate = *motBer
+			}
+		}
+	} else {
+		switch rateType {
+		case "dimensi":
+			if mobDim != nil {
+				rate = *mobDim
+			}
+		case "km":
+			if mobKm != nil {
+				rate = *mobKm
+			}
+		case "titik":
+			if mobTit != nil {
+				rate = *mobTit
+			}
+		case "berat":
+			if mobBer != nil {
+				rate = *mobBer
+			}
+		case "lumpsum":
+			if mobLump != nil {
+				rate = *mobLump
+			}
+		}
+	}
+
+	if rate == 0 {
+		if d, ok := defaults[armada]; ok {
+			if v, ok2 := d[rateType]; ok2 {
+				return v
+			}
+		}
+		return 10000.0
+	}
+	return rate
+}
+
+// ─── Geocoding & Routing helpers ──────────────────────────────────────────────
+
+func findRecipient(db *pgxpool.Pool, namaApotek, alamatLengkap string) (*models.Recipient, error) {
+	ctx := context.Background()
+	var rec models.Recipient
+	err := db.QueryRow(ctx, `
+	SELECT id, nama_apotek, alamat_lengkap, latitude, longitude 
+	FROM alamat_penerima 
+	WHERE LOWER(nama_apotek) = LOWER($1) OR LOWER(alamat_lengkap) = LOWER($2)
+	LIMIT 1;`, namaApotek, alamatLengkap).Scan(
+		&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude)
+	if err == nil {
+		return &rec, nil
+	}
+	return nil, nil
+}
+
+func cleanAddressForOSM(addr string) string {
+	words := strings.Fields(addr)
+	newWords := []string{}
+	for _, w := range words {
+		wLower := strings.ToLower(w)
+		if strings.HasPrefix(wLower, "no.") || strings.Contains(wLower, "rt.") || strings.Contains(wLower, "rw.") {
+			continue
+		}
+		newWords = append(newWords, w)
+	}
+	return strings.TrimSpace(strings.Join(newWords, " "))
+}
+
+func extractStreetAndCityVariations(alamat string) []string {
+	parts := strings.Split(alamat, ",")
+	var rawStreet, cityPart string
+	var results []string
+
+	for i := len(parts) - 1; i >= 0; i-- {
+		pTrimmed := strings.TrimSpace(parts[i])
+		pLower := strings.ToLower(pTrimmed)
+
+		if rawStreet == "" && (strings.HasPrefix(pLower, "jl.") || strings.HasPrefix(pLower, "jl ") || strings.HasPrefix(pLower, "jalan ")) {
+			words := strings.Fields(pTrimmed)
+			streetWords := []string{}
+			for _, w := range words {
+				wLower := strings.ToLower(w)
+				if strings.HasPrefix(wLower, "no.") || wLower == "no" || strings.Contains(wLower, "rt.") || strings.Contains(wLower, "rw.") {
+					break
+				}
+				streetWords = append(streetWords, w)
+			}
+			rawStreet = strings.Join(streetWords, " ")
+			for _, prefix := range []string{"jl.", "jl ", "jalan "} {
+				if strings.HasPrefix(strings.ToLower(rawStreet), prefix) {
+					rawStreet = strings.TrimSpace(rawStreet[len(prefix):])
+					break
+				}
+			}
+		}
+
+		if cityPart == "" && i > 0 {
+			for _, city := range []string{"jakarta", "yogyakarta", "jogja", "sleman", "bantul", "tangerang", "bekasi", "depok", "bogor"} {
+				if strings.Contains(pLower, city) {
+					cityPart = strings.Title(city)
+					if cityPart == "Jogja" {
+						cityPart = "Yogyakarta"
+					}
+					break
+				}
+			}
+		}
+	}
+
+	if rawStreet != "" && cityPart != "" {
+		results = append(results, "Jalan "+rawStreet+", "+cityPart)
+		results = append(results, rawStreet+", "+cityPart)
+	}
+	return results
+}
+
+func geocodeAddress(alamat string, fallbackLat, fallbackLong float64) (float64, float64, error) {
+	hereKey := os.Getenv("HERE_MAPS_API_KEY")
+	if hereKey != "" {
+		u := fmt.Sprintf("https://geocode.search.hereapi.com/v1/geocode?q=%s&apiKey=%s", url.QueryEscape(alamat), hereKey)
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Get(u)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var data struct {
+					Items []struct {
+						Position struct {
+							Lat float64 `json:"lat"`
+							Lng float64 `json:"lng"`
+						} `json:"position"`
+					} `json:"items"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && len(data.Items) > 0 {
+					return data.Items[0].Position.Lat, data.Items[0].Position.Lng, nil
+				}
+			}
+		}
+	}
+
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey != "" {
+		u := fmt.Sprintf("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s", url.QueryEscape(alamat), apiKey)
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Get(u)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var data struct {
+					Results []struct {
+						Geometry struct {
+							Location struct {
+								Lat float64 `json:"lat"`
+								Lng float64 `json:"lng"`
+							} `json:"location"`
+						} `json:"geometry"`
+					} `json:"results"`
+					Status string `json:"status"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && len(data.Results) > 0 && data.Status == "OK" {
+					return data.Results[0].Geometry.Location.Lat, data.Results[0].Geometry.Location.Lng, nil
+				}
+			}
+		}
+	}
+
+	// OSM Nominatim fallback
+	var queries []string
+	queries = append(queries, extractStreetAndCityVariations(alamat)...)
+	queries = append(queries, alamat)
+	parts := strings.Split(alamat, ",")
+	if len(parts) > 1 {
+		trimmed := []string{}
+		for _, p := range parts[1:] {
+			trimmed = append(trimmed, strings.TrimSpace(p))
+		}
+		queries = append(queries, strings.Join(trimmed, ", "))
+	}
+	for _, q := range append([]string{}, queries...) {
+		if cleaned := cleanAddressForOSM(q); cleaned != q && cleaned != "" {
+			queries = append(queries, cleaned)
+		}
+	}
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	for _, queryVal := range queries {
+		u := fmt.Sprintf("https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=1", url.QueryEscape(queryVal))
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "K24Apps/1.0 (contact: admin@k24.com)")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		var data []struct {
+			Lat string `json:"lat"`
+			Lon string `json:"lon"`
+		}
+		errDecode := json.NewDecoder(resp.Body).Decode(&data)
+		resp.Body.Close()
+		if errDecode == nil && len(data) > 0 {
+			latVal, err1 := strconv.ParseFloat(data[0].Lat, 64)
+			lonVal, err2 := strconv.ParseFloat(data[0].Lon, 64)
+			if err1 == nil && err2 == nil {
+				return latVal, lonVal, nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Deterministic fallback from address string hash
+	alamatLower := strings.ToLower(alamat)
+	var sum int
+	for _, char := range alamat {
+		sum += int(char)
+	}
+	latOffset := (float64(sum%80) + 20.0) / 1000.0
+	lngOffset := (float64((sum*3)%80) + 20.0) / 1000.0
+	if sum%2 == 0 {
+		latOffset = -latOffset
+	}
+	if (sum/3)%2 == 0 {
+		lngOffset = -lngOffset
+	}
+
+	// City-aware offsets for known regions
+	if fallbackLat > -6.5 && fallbackLat < -5.9 {
+		switch {
+		case strings.Contains(alamatLower, "tangerang"):
+			latOffset, lngOffset = -0.15-(float64(sum%50)/1000.0), -0.25-(float64(sum%50)/1000.0)
+		case strings.Contains(alamatLower, "bekasi"):
+			latOffset, lngOffset = -0.05-(float64(sum%50)/1000.0), 0.22+(float64(sum%50)/1000.0)
+		case strings.Contains(alamatLower, "bogor"):
+			latOffset, lngOffset = -0.45-(float64(sum%50)/1000.0), 0.05+(float64(sum%50)/1000.0)
+		case strings.Contains(alamatLower, "depok"):
+			latOffset, lngOffset = -0.22-(float64(sum%50)/1000.0), -0.05-(float64(sum%50)/1000.0)
+		}
+	}
+	if fallbackLat > -8.2 && fallbackLat < -7.5 {
+		switch {
+		case strings.Contains(alamatLower, "gunung kidul") || strings.Contains(alamatLower, "wonosari"):
+			latOffset, lngOffset = -0.32-(float64(sum%80)/1000.0), 0.35+(float64(sum%80)/1000.0)
+		case strings.Contains(alamatLower, "kulon progo") || strings.Contains(alamatLower, "wates"):
+			latOffset, lngOffset = -0.15-(float64(sum%80)/1000.0), -0.38-(float64(sum%80)/1000.0)
+		case strings.Contains(alamatLower, "bantul"):
+			latOffset, lngOffset = -0.18-(float64(sum%50)/1000.0), -0.05-(float64(sum%50)/1000.0)
+		case strings.Contains(alamatLower, "sleman"):
+			latOffset, lngOffset = 0.08+(float64(sum%80)/1000.0), 0.02+(float64(sum%80)/1000.0)
+		}
+	}
+
+	return fallbackLat + latOffset, fallbackLong + lngOffset, nil
+}
+
+func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng float64) (float64, error) {
+	ctx := context.Background()
+	var distance float64
+
+	// Check route cache
+	err := db.QueryRow(ctx, `
+	SELECT distance_km FROM route_cache 
+	WHERE ABS(origin_lat - $1) < 0.0001 AND ABS(origin_long - $2) < 0.0001 
+	  AND ABS(dest_lat - $3) < 0.0001 AND ABS(dest_long - $4) < 0.0001 
+	LIMIT 1;`, originLat, originLng, destLat, destLng).Scan(&distance)
+	if err == nil {
+		return distance, nil
+	}
+
+	apiSuccess := false
+
+	hereKey := os.Getenv("HERE_MAPS_API_KEY")
+	if hereKey != "" {
+		u := fmt.Sprintf("https://router.hereapi.com/v8/routes?transportMode=car&origin=%f,%f&destination=%f,%f&return=summary&apiKey=%s",
+			originLat, originLng, destLat, destLng, hereKey)
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Get(u)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var data struct {
+					Routes []struct {
+						Sections []struct {
+							Summary struct {
+								Length int `json:"length"`
+							} `json:"summary"`
+						} `json:"sections"`
+					} `json:"routes"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && len(data.Routes) > 0 && len(data.Routes[0].Sections) > 0 {
+					distance = float64(data.Routes[0].Sections[0].Summary.Length) / 1000.0
+					apiSuccess = true
+				}
+			}
+		}
+	}
+
+	if !apiSuccess {
+		apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+		if apiKey != "" {
+			u := fmt.Sprintf("https://maps.googleapis.com/maps/api/distancematrix/json?origins=%f,%f&destinations=%f,%f&key=%s",
+				originLat, originLng, destLat, destLng, apiKey)
+			httpClient := &http.Client{Timeout: 5 * time.Second}
+			resp, err := httpClient.Get(u)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					var data struct {
+						Rows []struct {
+							Elements []struct {
+								Distance struct {
+									Value int `json:"value"`
+								} `json:"distance"`
+								Status string `json:"status"`
+							} `json:"elements"`
+						} `json:"rows"`
+						Status string `json:"status"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&data); err == nil &&
+						data.Status == "OK" && len(data.Rows) > 0 &&
+						len(data.Rows[0].Elements) > 0 && data.Rows[0].Elements[0].Status == "OK" {
+						distance = float64(data.Rows[0].Elements[0].Distance.Value) / 1000.0
+						apiSuccess = true
+					}
+				}
+			}
+		}
+	}
+
+	if !apiSuccess {
+		u := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false",
+			originLng, originLat, destLng, destLat)
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Get(u)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var data struct {
+					Routes []struct {
+						Distance float64 `json:"distance"`
+					} `json:"routes"`
+					Code string `json:"code"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && data.Code == "Ok" && len(data.Routes) > 0 {
+					distance = data.Routes[0].Distance / 1000.0
+					apiSuccess = true
+				}
+			}
+		}
+	}
+
+	if !apiSuccess {
+		distance = haversineDistance(originLat, originLng, destLat, destLng) * 1.3
+	}
+
+	// Store in cache
+	_, _ = db.Exec(ctx, `
+	INSERT INTO route_cache (origin_lat, origin_long, dest_lat, dest_long, distance_km)
+	VALUES ($1, $2, $3, $4, $5);`, originLat, originLng, destLat, destLng, distance)
+
+	return distance, nil
+}
+
+func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * math.Pi / 180.0
+	dLon := (lon2 - lon1) * math.Pi / 180.0
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180.0)*math.Cos(lat2*math.Pi/180.0)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
+// UpdateOrderPickup handles driver uploading pickup proof
+func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		PickupPhoto string `json:"pickup_photo" binding:"required"`
+		PickupNote  string `json:"pickup_note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+
+	// Retrieve order dispatch_id and parent_order_number
+	var dispatchID, parentNum string
+	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(dispatch_id, ''), COALESCE(parent_order_number, '') FROM orders WHERE id = $1", orderID).Scan(&dispatchID, &parentNum)
+
+	if dispatchID != "" || parentNum != "" {
+		// Update all sibling orders in the same batch group
+		_, err := h.DB.Exec(ctx,
+			`UPDATE orders 
+			 SET status = 'DELIVERING', pickup_photo_url = $1, pickup_note = $2 
+			 WHERE id = $3 OR (dispatch_id = $4 AND dispatch_id != '') OR (parent_order_number = $5 AND parent_order_number != '')`,
+			req.PickupPhoto, req.PickupNote, orderID, dispatchID, parentNum,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui status pickup batch: " + err.Error()})
+			return
+		}
+	} else {
+		_, err := h.DB.Exec(ctx,
+			`UPDATE orders 
+			 SET status = 'DELIVERING', pickup_photo_url = $1, pickup_note = $2 
+			 WHERE id = $3`,
+			req.PickupPhoto, req.PickupNote, orderID,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui status pickup: " + err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Status berhasil diubah menjadi ON DELIVERY"})
+}
+
+// UpdateOrderReject handles driver rejecting a stop pickup
+func (h *AdminHandler) UpdateOrderReject(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		RejectPhoto  string `json:"reject_photo" binding:"required"`
+		RejectNote   string `json:"reject_note" binding:"required"`
+		RejectReason string `json:"reject_reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = 'REJECTED_WAITING_APPROVAL', reject_photo_url = $1, reject_note = $2, reject_reason = $3 
+		 WHERE id = $4`,
+		req.RejectPhoto, req.RejectNote, req.RejectReason, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses penolakan: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Penolakan berhasil diajukan, menunggu persetujuan Admin"})
+}
+
+// AdminApproveReject handles admin approving/denying a driver's rejection
+func (h *AdminHandler) AdminApproveReject(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		Approve bool `json:"approve"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	status := "WAITING_FOR_PICKUP"
+	if req.Approve {
+		status = "CANCELLED"
+	}
+
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = $1, reject_approved = $2 
+		 WHERE id = $3`,
+		status, req.Approve, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses keputusan penolakan: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification
+	var driverID *int
+	var orderNum, pharmName string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, order_number, pharmacy_name FROM orders WHERE id = $1", orderID).Scan(&driverID, &orderNum, &pharmName)
+	if err == nil && driverID != nil {
+		var title, message string
+		if req.Approve {
+			title = "Penolakan Disetujui"
+			message = fmt.Sprintf("Permohonan penolakan pickup pesanan %s di %s telah DISETUJUI oleh Admin.", orderNum, pharmName)
+		} else {
+			title = "Penolakan Ditolak"
+			message = fmt.Sprintf("Permohonan penolakan pickup pesanan %s di %s telah DITOLAK oleh Admin. Silakan lakukan pickup ulang.", orderNum, pharmName)
+		}
+		_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+	}
+
+	msg := "Penolakan ditolak, status order dikembalikan ke WAITING FOR PICKUP"
+	if req.Approve {
+		msg = "Penolakan disetujui, status order menjadi REJECTED / CANCELLED"
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: msg})
+}
+
+// UnboxOrder handles driver or pharmacist submitting direct unboxing
+func (h *AdminHandler) UnboxOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		CheckedInvoices    string `json:"checked_invoices"`
+		ExtraItemsNote     string `json:"extra_items_note"`
+		ExtraItemsPhotoUrl string `json:"extra_items_photo_url"`
+		FacturePhotoUrl    string `json:"facture_photo_url"`
+		SignaturePhotoUrl  string `json:"signature_photo_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	now := time.Now()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = 'READY_FOR_PICKUP_FACTURE', unboxing_option = 'UNBOXING', 
+		     checked_invoices = COALESCE(NULLIF($1, ''), checked_invoices), 
+		     extra_items_note = COALESCE(NULLIF($2, ''), extra_items_note), 
+		     extra_items_photo_url = COALESCE(NULLIF($3, ''), extra_items_photo_url), 
+		     facture_photo_url = COALESCE(NULLIF($4, ''), facture_photo_url), 
+		     signature_photo_url = COALESCE(NULLIF($5, ''), signature_photo_url), 
+		     completed_at = $6 
+		 WHERE id = $7`,
+		req.CheckedInvoices, req.ExtraItemsNote, req.ExtraItemsPhotoUrl, req.FacturePhotoUrl, req.SignaturePhotoUrl, now, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan hasil unboxing: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification for driver, mitra, and admin
+	var driverID, mitraID *int
+	var pharmName, pharmAddress, orderNum string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, pharmacy_address, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &pharmAddress, &orderNum)
+	if err == nil {
+		if driverID != nil {
+			title := "Faktur Siap Diambil"
+			message := fmt.Sprintf("Faktur dari alamat %s (%s) sudah selesai di-unbox, silakan kembali ke Gudang K-24.", pharmName, pharmAddress)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+		}
+		if mitraID != nil {
+			title := "Unboxing Selesai"
+			message := fmt.Sprintf("Apoteker di %s telah memverifikasi faktur pesanan %s.", pharmName, orderNum)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, title, message)
+		}
+		NotifyAdmins(ctx, h.DB, "Verifikasi Apoteker Selesai", fmt.Sprintf("Faktur pesanan %s (%s) telah diverifikasi oleh Apoteker.", orderNum, pharmName))
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Unboxing selesai, status order diset menjadi READY_FOR_PICKUP_FACTURE"})
+}
+
+// WaitUnboxOrder handles pharmacist choosing to wait for unboxing later
+func (h *AdminHandler) WaitUnboxOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Alasan tunda unboxing wajib diisi"})
+		return
+	}
+
+	ctx := context.Background()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = 'PENDING', unboxing_option = 'WAITING_FOR_UNBOXING', extra_items_note = $1 
+		 WHERE id = $2`,
+		req.Reason, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui opsi unboxing: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification for driver: "Unboxing untuk pesanan X ditunda oleh apoteker"
+	var driverID *int
+	var pharmName, orderNum string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, pharmacy_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &pharmName, &orderNum)
+	if err == nil && driverID != nil {
+		title := "Unboxing Ditunda"
+		message := fmt.Sprintf("Unboxing untuk pesanan %s di apotek %s ditunda. Alasan: \"%s\".", orderNum, pharmName, req.Reason)
+		_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Opsi WAITING FOR UNBOXING disimpan dengan alasan tunda"})
+}
+
+// StartUnboxOrder sets unboxing_option = 'UNBOXING' when pharmacist starts unboxing
+func (h *AdminHandler) StartUnboxOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	ctx := context.Background()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders SET unboxing_option = 'UNBOXING' WHERE id = $1`,
+		orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memulai unboxing: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Unboxing dimulai"})
+}
+
+// UpdateOrderFacture handles driver uploading physical signed invoice photo
+func (h *AdminHandler) UpdateOrderFacture(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		FacturePhoto string `json:"facture_photo" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	now := time.Now()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = 'READY_FOR_PICKUP_FACTURE', facture_photo_url = $1, completed_at = $2 
+		 WHERE id = $3`,
+		req.FacturePhoto, now, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengunggah foto faktur: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Unggah faktur berhasil, order selesai (COMPLETED)"})
+}
+
+// AdminApproveFacture handles admin/mitra approving or rejecting the driver's uploaded physical facture photo
+func (h *AdminHandler) AdminApproveFacture(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		Approve bool `json:"approve"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	status := "READY_FOR_PICKUP_FACTURE" // If rejected, driver needs to re-upload
+	if req.Approve {
+		status = "COMPLETED" // If approved, it is completed
+	}
+
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders SET status = $1 WHERE id = $2`,
+		status, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses keputusan faktur: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification
+	var driverID *int
+	var orderNum, pharmName string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, order_number, pharmacy_name FROM orders WHERE id = $1", orderID).Scan(&driverID, &orderNum, &pharmName)
+	if err == nil && driverID != nil {
+		var title, message string
+		if req.Approve {
+			title = "Faktur Disetujui"
+			message = fmt.Sprintf("Faktur fisik untuk pesanan %s di %s telah DISETUJUI oleh Admin. Pesanan selesai.", orderNum, pharmName)
+		} else {
+			title = "Faktur Ditolak"
+			message = fmt.Sprintf("Faktur fisik untuk pesanan %s di %s telah DITOLAK oleh Admin. Silakan upload ulang foto faktur baru yang valid.", orderNum, pharmName)
+		}
+		_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+	}
+
+	msg := "Persetujuan faktur ditolak, driver harus mengunggah ulang"
+	if req.Approve {
+		msg = "Persetujuan faktur disetujui, order selesai (COMPLETED)"
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: msg})
+}
+
+// PublicApprovePOD handles staff K-24 scanning QR code and clicking DONE button to approve POD return and mark order COMPLETED
+func (h *AdminHandler) PublicApprovePOD(c *gin.Context) {
+	orderID := c.Param("id")
+	ctx := context.Background()
+
+	now := time.Now()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders SET status = 'COMPLETED', completed_at = $1 WHERE id = $2`,
+		now, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses persetujuan POD: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification for driver
+	var driverID *int
+	var pharmName, orderNum string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, pharmacy_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &pharmName, &orderNum)
+	if err == nil && driverID != nil {
+		title := "Pengembalian POD Disetujui (Done)"
+		message := fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah DISETUJUI oleh K-24. Pesanan SELESAI (COMPLETED).", orderNum, pharmName)
+		_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Pengembalian POD berhasil disetujui (COMPLETED)"})
+}
+
+// CompletePODOrder handles driver completing POD return stage with POD digital signature
+func (h *AdminHandler) CompletePODOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		PodSignaturePhotoUrl string `json:"pod_signature_photo_url"`
+		FacturePhotoUrl      string `json:"facture_photo_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// Find target order's parent_order_number and dispatch_id
+	var parentOrderNum, dispatchID string
+	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(parent_order_number, ''), COALESCE(dispatch_id, '') FROM orders WHERE id = $1", orderID).Scan(&parentOrderNum, &dispatchID)
+
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET status = 'COMPLETED', 
+		     pod_signature_photo_url = COALESCE(NULLIF($1, ''), pod_signature_photo_url), 
+		     facture_photo_url = COALESCE(NULLIF($2, ''), facture_photo_url), 
+		     completed_at = $3 
+		 WHERE id = $4
+		    OR (dispatch_id != '' AND dispatch_id = $5)
+		    OR (parent_order_number != '' AND parent_order_number = $6)`,
+		req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, orderID, dispatchID, parentOrderNum,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyelesaikan pengembalian POD: " + err.Error()})
+		return
+	}
+
+	// Trigger Notification for driver, mitra, and admin
+	var driverID, mitraID *int
+	var pharmName, orderNum string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &orderNum)
+	if err == nil {
+		if driverID != nil {
+			title := "Pengembalian POD Selesai"
+			message := fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah SELESAI (COMPLETED).", orderNum, pharmName)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+		}
+		if mitraID != nil {
+			title := "Pesanan SELESAI (COMPLETED)"
+			message := fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah disetujui dan SELESAI (DONE).", orderNum, pharmName)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, title, message)
+		}
+		NotifyAdmins(ctx, h.DB, "Pesanan SELESAI (DONE)", fmt.Sprintf("Order %s (%s) telah resmi COMPLETED setelah verifikasi POD.", orderNum, pharmName))
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Pengembalian POD berhasil diselesaikan (COMPLETED)"})
+}
+
+// GetPublicOrderDetail fetches order stop details for the pharmacist
+func (h *AdminHandler) GetPublicOrderDetail(c *gin.Context) {
+	orderID := c.Param("id")
+	ctx := context.Background()
+
+	var o models.Order
+	var medicineSummary string
+	err := h.DB.QueryRow(ctx,
+		`SELECT id, order_number, status, pharmacy_name, pharmacy_address, delivery_address, 
+		        customer_name, customer_phone, medicine_summary, delivery_fee, created_at,
+		        COALESCE(parent_order_number, ''), COALESCE(dispatch_id, ''),
+		        COALESCE(unboxing_option, ''), COALESCE(checked_invoices, ''),
+		        COALESCE(extra_items_note, ''), COALESCE(extra_items_photo_url, ''),
+		        COALESCE(facture_photo_url, '')
+		 FROM orders WHERE id = $1`, orderID,
+	).Scan(
+		&o.ID, &o.OrderNumber, &o.Status, &o.PharmacyName, &o.PharmacyAddress, &o.DeliveryAddress,
+		&o.CustomerName, &o.CustomerPhone, &medicineSummary, &o.DeliveryFee, &o.CreatedAt,
+		&o.ParentOrderNumber, &o.DispatchID,
+		&o.UnboxingOption, &o.CheckedInvoices, &o.ExtraItemsNote, &o.ExtraItemsPhotoUrl,
+		&o.FacturePhotoUrl,
+	)
+
+	if err == pgx.ErrNoRows {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Order tidak ditemukan"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil data order: " + err.Error()})
+		return
+	}
+
+	// Parse invoices
+	var invoices []string
+	if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
+		invoices = strings.Split(parts[1], ", ")
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Status: "success",
+		Data: map[string]interface{}{
+			"order":    o,
+			"invoices": invoices,
+		},
+	})
+}
+
+
