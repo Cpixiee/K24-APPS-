@@ -274,8 +274,8 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 			if finalLat == 0 && finalLng == 0 {
 				finalLat, finalLng, _ = geocodeAddress(item.AlamatLengkap, originLat, originLong)
 			}
-			insertRecipient := `INSERT INTO alamat_penerima (nama_apotek, alamat_lengkap, latitude, longitude) VALUES ($1, $2, $3, $4);`
-			_, _ = tx.Exec(ctx, insertRecipient, item.NamaApotek, item.AlamatLengkap, finalLat, finalLng)
+			insertRecipient := `INSERT INTO alamat_penerima (nama_apotek, alamat_lengkap, latitude, longitude) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING;`
+			_, _ = h.DB.Exec(ctx, insertRecipient, item.NamaApotek, item.AlamatLengkap, finalLat, finalLng)
 		}
 		resolved = append(resolved, resolvedBulkItem{
 			item:      item,

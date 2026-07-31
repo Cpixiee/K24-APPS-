@@ -288,7 +288,7 @@ type BulkOrderItemInput struct {
 	Longitude     float64  `json:"longitude"`
 	KubikAktual   *float64 `json:"kubik_aktual"`
 	BeratAktual   *float64 `json:"berat_aktual"`
-	Invoices      []string `json:"invoices" binding:"required"`
+	Invoices      []string `json:"invoices"`
 }
 
 // PendingDispatchOrder represents order rows waiting for dispatch
