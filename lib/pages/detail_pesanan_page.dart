@@ -494,7 +494,8 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       backendBase = 'http://${ApiService.serverLanIp}';
     }
 
-    final webBase = '$backendBase:3000';
+    final webPort = backendBase.contains('103.236.140.19') ? '9002' : '3000';
+    final webBase = '$backendBase:$webPort';
     final qrUrl = '$webBase/apoteker/unbox/${_currentOrder.id}';
 
     showDialog(

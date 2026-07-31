@@ -9,9 +9,9 @@ import 'package:apps_k24/services/http_debug_logger.dart';
 class ApiService {
   static String? _customBaseUrl;
   static String? _serverLanIp;
-  // IP Mac server yang diketahui (fallback untuk HP fisik & emulator)
-  static const String _knownServerIp = '192.168.18.228';
-  static const int _serverPort = 8087;
+  static const String _publicServerUrl = 'http://103.236.140.19:9001/api';
+  static const String _knownServerIp = '103.236.140.19';
+  static const int _serverPort = 9001;
 
   static String? get serverLanIp => _serverLanIp;
 
@@ -27,7 +27,7 @@ class ApiService {
       try {
         final response = await http
             .get(Uri.parse('$_customBaseUrl/health'))
-            .timeout(const Duration(milliseconds: 500));
+            .timeout(const Duration(milliseconds: 1500));
         if (response.statusCode != 200) {
           _customBaseUrl = null;
         }
@@ -36,71 +36,50 @@ class ApiService {
       }
     }
 
-    // Auto-discover server di LAN / Emulator
+    // Connect to public server or discover LAN
     await _autoDiscoverServer();
   }
 
-  /// Auto-discover backend server di jaringan LAN / Emulator.
+  /// Connect to Public Server http://103.236.140.19:9001/api or LAN fallback
   static Future<void> _autoDiscoverServer() async {
-    if (kIsWeb) return;
+    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) return;
 
-    // 1. Coba IP server yang sudah diketahui di Wi-Fi LAN (HP Fisik & Mac)
-    final knownUrl = 'http://$_knownServerIp:$_serverPort/api';
+    // 1. Coba Server Publik IP (103.236.140.19:9001)
+    try {
+      final response = await http
+          .get(Uri.parse('$_publicServerUrl/health'))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode == 200) {
+        _customBaseUrl = _publicServerUrl;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('custom_base_url', _publicServerUrl);
+        debugPrint('[API] Server Publik terhubung: $_publicServerUrl');
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Coba IP LAN Server lokal fallback
+    final knownUrl = 'http://192.168.18.228:8087/api';
     try {
       final response = await http
           .get(Uri.parse('$knownUrl/health'))
           .timeout(const Duration(seconds: 1));
       if (response.statusCode == 200) {
         _customBaseUrl = knownUrl;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('custom_base_url', knownUrl);
-        debugPrint('[API] Server ditemukan di IP diketahui: $knownUrl');
+        debugPrint('[API] Server LAN Lokal terhubung: $knownUrl');
         return;
       }
     } catch (_) {}
 
-    // 2. Coba 10.0.2.2 jika di Android Emulator bridge ke host localhost
+    // 3. Coba 10.0.2.2 jika di Android Emulator bridge ke host
     try {
-      final emulatorUrl = 'http://10.0.2.2:$_serverPort/api';
+      final emulatorUrl = 'http://10.0.2.2:8087/api';
       final res = await http
           .get(Uri.parse('$emulatorUrl/health'))
           .timeout(const Duration(seconds: 1));
       if (res.statusCode == 200) {
         _customBaseUrl = emulatorUrl;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('custom_base_url', emulatorUrl);
-        debugPrint('[API] Server ditemukan di Android Emulator 10.0.2.2: $emulatorUrl');
         return;
-      }
-    } catch (_) {}
-
-    // 3. Scan subnet LAN jika belum ketemu
-    debugPrint('[API] Scanning LAN untuk backend server...');
-    final knownSubnet = _knownServerIp.substring(0, _knownServerIp.lastIndexOf('.'));
-    final subnetsToScan = <String>{knownSubnet, '192.168.18', '192.168.8', '192.168.1'};
-    final futures = <Future>[];
-    for (final subnet in subnetsToScan) {
-      for (int i = 1; i <= 254; i++) {
-        final ip = '$subnet.$i';
-        if (ip == _knownServerIp) continue;
-        futures.add(_tryConnect(ip));
-      }
-    }
-    await Future.wait(futures);
-  }
-
-  static Future<void> _tryConnect(String ip) async {
-    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) return;
-    final url = 'http://$ip:$_serverPort/api';
-    try {
-      final response = await http
-          .get(Uri.parse('$url/health'))
-          .timeout(const Duration(seconds: 1));
-      if (response.statusCode == 200) {
-        _customBaseUrl = url;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('custom_base_url', url);
-        debugPrint('[API] Server ditemukan di: $url');
       }
     } catch (_) {}
   }
@@ -122,15 +101,12 @@ class ApiService {
     }
   }
 
-  // Configures the API Base URL dynamically depending on the execution environment
+  // Configures the API Base URL dynamically
   static String get baseUrl {
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       return _customBaseUrl!;
     }
-    if (kIsWeb) {
-      return 'http://localhost:$_serverPort/api';
-    }
-    return 'http://$_knownServerIp:$_serverPort/api';
+    return _publicServerUrl;
   }
 
   // Set or clear a custom API Base URL
