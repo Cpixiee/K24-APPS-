@@ -50,6 +50,7 @@ export default function DispatchPage() {
   const [loadingOrders, setLoadingOrders] = useState(true)
   const [selectedStopIds, setSelectedStopIds] = useState<number[]>([])
   const [mitraFilter, setMitraFilter] = useState('ALL')
+  const [armadaFilter, setArmadaFilter] = useState<'ALL' | 'MOTOR' | 'MOBIL'>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
 
   const [cards, setCards] = useState<DispatchCard[]>([])
@@ -94,33 +95,46 @@ export default function DispatchPage() {
   const filteredStops = useMemo(() => {
     return allStops.filter((s) => {
       const matchMitra = mitraFilter === 'ALL' || s.mitra_name === mitraFilter
+      const matchArmada = armadaFilter === 'ALL' || s.armada?.toUpperCase() === armadaFilter
       const q = searchQuery.toLowerCase()
       const matchSearch =
         s.order_number?.toLowerCase().includes(q) ||
         s.customer_name?.toLowerCase().includes(q) ||
         s.delivery_address?.toLowerCase().includes(q) ||
         s.dispatch_id?.toLowerCase().includes(q)
-      return matchMitra && matchSearch
+      return matchMitra && matchArmada && matchSearch
     })
-  }, [allStops, mitraFilter, searchQuery])
+  }, [allStops, mitraFilter, armadaFilter, searchQuery])
 
-  // Re-generate default cards of max 4 addresses when filteredStops change
+  // Re-generate default cards grouped by batch/dispatch_id
   useEffect(() => {
     if (filteredStops.length === 0) {
       setCards([])
       return
     }
-    const CHUNK_SIZE = 4
+    
+    const groupsMap = new Map<string, Stop[]>()
+    filteredStops.forEach((stop) => {
+      const key = stop.dispatch_id || stop.parent_order_number || `ORDER-${stop.id}`
+      if (!groupsMap.has(key)) groupsMap.set(key, [])
+      groupsMap.get(key)!.push(stop)
+    })
+
     const newCards: DispatchCard[] = []
-    for (let i = 0; i < filteredStops.length; i += CHUNK_SIZE) {
-      const chunk = filteredStops.slice(i, i + CHUNK_SIZE)
-      const cardNum = Math.floor(i / CHUNK_SIZE) + 1
-      newCards.push({
-        id: `card-${cardNum}`,
-        title: `Card Cluster #${cardNum} (Se-rute ${chunk.length} Alamat)`,
-        stops: chunk,
-      })
-    }
+    let cardNum = 1
+    groupsMap.forEach((stops, batchKey) => {
+      const CHUNK_SIZE = 4
+      for (let i = 0; i < stops.length; i += CHUNK_SIZE) {
+        const chunk = stops.slice(i, i + CHUNK_SIZE)
+        const armadaTag = chunk[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
+        newCards.push({
+          id: `card-${batchKey}-${i}`,
+          title: `Card Cluster #${cardNum} [${batchKey}] (${armadaTag} — ${chunk.length} Alamat)`,
+          stops: chunk,
+        })
+        cardNum++
+      }
+    })
     setCards(newCards)
   }, [filteredStops])
 
@@ -292,6 +306,44 @@ export default function DispatchPage() {
             >
               Dispatch {selectedStopIds.length > 0 ? `(${selectedStopIds.length} Alamat)` : 'Item Terpilih'}
               <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Armada Tabs: [ Semua Armada ] | [ 🛵 MOTOR ] | [ 🚗 MOBIL ] */}
+          <div className="flex items-center gap-2 mb-4 bg-muted/40 p-1.5 rounded-2xl border border-border">
+            <button
+              onClick={() => setArmadaFilter('ALL')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                armadaFilter === 'ALL'
+                  ? 'bg-white dark:bg-card text-foreground shadow-sm border border-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Semua Armada ({allStops.length})
+            </button>
+            <button
+              onClick={() => setArmadaFilter('MOTOR')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                armadaFilter === 'MOTOR'
+                  ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              🛵 MOTOR ({allStops.filter((s) => s.armada?.toUpperCase() === 'MOTOR').length})
+            </button>
+            <button
+              onClick={() => setArmadaFilter('MOBIL')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2',
+                armadaFilter === 'MOBIL'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              🚗 MOBIL ({allStops.filter((s) => s.armada?.toUpperCase() === 'MOBIL').length})
             </button>
           </div>
 

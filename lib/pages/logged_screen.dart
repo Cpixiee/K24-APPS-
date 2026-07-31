@@ -388,10 +388,10 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 _buildKineticHeroCard(data.driver),
                 gapH20,
 
-                // 3. Active Delivery Kinetic Highlight (if active orders exist)
+                // 3. Active Delivery Kinetic Highlight (Render ALL Dispatch Group Cards)
                 if (activeOrders.isNotEmpty) ...[
-                  _buildKineticActiveOrderHighlight(activeOrders.first),
-                  gapH20,
+                  ..._buildGroupedActiveCards(activeOrders),
+                  gapH12,
                 ],
 
                 // 4. Kinetic Quick Actions Dock
@@ -798,10 +798,33 @@ class _LoggedScreenState extends State<LoggedScreen> {
     );
   }
 
+  List<Widget> _buildGroupedActiveCards(List<OrderModel> activeOrders) {
+    final Map<String, List<OrderModel>> grouped = {};
+    for (final o in activeOrders) {
+      final key = o.dispatchId.isNotEmpty
+          ? o.dispatchId
+          : (o.parentOrderNumber.isNotEmpty ? o.parentOrderNumber : o.orderNumber);
+      if (!grouped.containsKey(key)) grouped[key] = [];
+      grouped[key]!.add(o);
+    }
+
+    final widgets = <Widget>[];
+    grouped.forEach((dispId, orders) {
+      widgets.add(_buildKineticActiveOrderHighlight(orders.first, groupStops: orders, dispatchTag: dispId));
+      widgets.add(gapH12);
+    });
+    return widgets;
+  }
+
   // -------------------------------------------------------------
   // 3. KINETIC ACTIVE ORDER HIGHLIGHT CARD
   // -------------------------------------------------------------
-  Widget _buildKineticActiveOrderHighlight(OrderModel order) {
+  Widget _buildKineticActiveOrderHighlight(OrderModel order, {List<OrderModel>? groupStops, String? dispatchTag}) {
+    final stopsCount = groupStops?.length ?? 1;
+    final tagText = dispatchTag != null && dispatchTag.isNotEmpty
+        ? dispatchTag
+        : (order.dispatchId.isNotEmpty ? order.dispatchId : order.orderNumber);
+
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -836,9 +859,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
                     child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 16),
                   ),
                   gapW8,
-                  const Text(
-                    'PENGANTARAN AKTIF',
-                    style: TextStyle(
+                  Text(
+                    stopsCount > 1 ? 'PENGANTARAN BATCH ($stopsCount ALAMAT)' : 'PENGANTARAN AKTIF',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
                       fontSize: 12,
@@ -855,7 +878,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  order.orderNumber,
+                  tagText,
                   style: const TextStyle(
                     color: AppColors.darkGrey,
                     fontWeight: FontWeight.w800,
