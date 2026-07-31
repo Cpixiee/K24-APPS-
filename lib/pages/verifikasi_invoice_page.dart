@@ -274,13 +274,15 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
 
       if (remainingStops.isNotEmpty) {
         final nextStop = remainingStops.first;
+        final name = nextStop.customerName.isNotEmpty ? nextStop.customerName : nextStop.pharmacyName;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Unboxing & Laporan WA terkirim! Melanjutkan ke titik berikutnya: ${nextStop.pharmacyName.isNotEmpty ? nextStop.pharmacyName : nextStop.customerName}'),
+            content: Text('✅ Unboxing & Laporan WA terkirim! Melanjutkan ke titik berikutnya: $name'),
             backgroundColor: AppColors.primaryGreen,
             duration: const Duration(seconds: 4),
           ),
         );
+        Navigator.pop(context, nextStop);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -289,9 +291,8 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
             duration: const Duration(seconds: 5),
           ),
         );
+        Navigator.pop(context, true);
       }
-
-      Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -29,6 +29,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
   String? _customProfilePicPath;
   Timer? _notificationTimer;
   int _unreadNotificationCount = 0;
+  final Set<String> _collapsedCardIds = {};
 
   static const List<IconData> _avatarIcons = [
     Icons.person_rounded,
@@ -810,20 +811,39 @@ class _LoggedScreenState extends State<LoggedScreen> {
 
     final widgets = <Widget>[];
     grouped.forEach((dispId, orders) {
-      widgets.add(_buildKineticActiveOrderHighlight(orders.first, groupStops: orders, dispatchTag: dispId));
+      // Pick current active (uncompleted) stop dynamically
+      final activeStop = orders.firstWhere(
+        (s) => s.status != 'COMPLETED' && s.status != 'READY_FOR_PICKUP_FACTURE' && s.status != 'CANCELLED',
+        orElse: () => orders.first,
+      );
+      final activeIndex = orders.indexOf(activeStop) + 1;
+      widgets.add(_buildKineticActiveOrderHighlight(
+        activeStop,
+        groupStops: orders,
+        dispatchTag: dispId,
+        activeStopIndex: activeIndex,
+      ));
       widgets.add(gapH12);
     });
     return widgets;
   }
 
   // -------------------------------------------------------------
-  // 3. KINETIC ACTIVE ORDER HIGHLIGHT CARD
+  // 3. KINETIC ACTIVE ORDER HIGHLIGHT CARD (COLLAPSIBLE DROPDOWN)
   // -------------------------------------------------------------
-  Widget _buildKineticActiveOrderHighlight(OrderModel order, {List<OrderModel>? groupStops, String? dispatchTag}) {
+  Widget _buildKineticActiveOrderHighlight(
+    OrderModel order, {
+    List<OrderModel>? groupStops,
+    String? dispatchTag,
+    int activeStopIndex = 1,
+  }) {
     final stopsCount = groupStops?.length ?? 1;
     final tagText = dispatchTag != null && dispatchTag.isNotEmpty
         ? dispatchTag
         : (order.dispatchId.isNotEmpty ? order.dispatchId : order.orderNumber);
+
+    final isCollapsed = _collapsedCardIds.contains(tagText);
+    final targetPharmacy = order.customerName.isNotEmpty ? order.customerName : order.pharmacyName;
 
     return Container(
       decoration: BoxDecoration(
@@ -841,117 +861,197 @@ class _LoggedScreenState extends State<LoggedScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row with Dropdown/Collapse Toggle
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 16),
+                    ),
+                    gapW8,
+                    Flexible(
+                      child: Text(
+                        stopsCount > 1
+                            ? 'TITIK AKTIF $activeStopIndex/$stopsCount (BATCH)'
+                            : 'PENGANTARAN AKTIF',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          fontFamily: 'Poppins',
+                          letterSpacing: 0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
+                      color: const Color(0xFFFFB300),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 16),
+                    child: Text(
+                      tagText,
+                      style: const TextStyle(
+                        color: AppColors.darkGrey,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
                   ),
-                  gapW8,
-                  Text(
-                    stopsCount > 1 ? 'PENGANTARAN BATCH ($stopsCount ALAMAT)' : 'PENGANTARAN AKTIF',
-                    style: const TextStyle(
+                  const SizedBox(width: 6),
+                  // Dropdown / Collapse Button Toggle
+                  IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                    icon: Icon(
+                      isCollapsed
+                          ? Icons.keyboard_arrow_down_rounded
+                          : Icons.keyboard_arrow_up_rounded,
                       color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12,
-                      fontFamily: 'Poppins',
-                      letterSpacing: 0.5,
+                      size: 22,
                     ),
+                    onPressed: () {
+                      setState(() {
+                        if (_collapsedCardIds.contains(tagText)) {
+                          _collapsedCardIds.remove(tagText);
+                        } else {
+                          _collapsedCardIds.add(tagText);
+                        }
+                      });
+                    },
+                    tooltip: isCollapsed ? 'Buka Card' : 'Kecilkan Card',
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            ],
+          ),
+
+          // If Collapsed: Render 1-line Compact View
+          if (isCollapsed) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _collapsedCardIds.remove(tagText);
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFB300),
-                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text(
-                  tagText,
-                  style: const TextStyle(
-                    color: AppColors.darkGrey,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-            ],
-          ),
-          gapH12,
-
-          // Customer & Address Row
-          Row(
-            children: [
-              const Icon(Icons.person_pin_circle_rounded, color: Colors.white70, size: 20),
-              gapW8,
-              Expanded(
-                child: Text(
-                  '${order.customerName} (${order.deliveryAddress})',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    fontFamily: 'Poppins',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          gapH12,
-
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailPesananPage(order: order),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, color: Color(0xFFFFB300), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Titik $activeStopIndex: $targetPharmacy (${order.deliveryAddress})',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ).then((_) => _fetchDashboardData());
-                  },
-                  icon: const Icon(Icons.visibility_rounded, size: 16),
-                  label: const Text('Detail Pesanan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0054A6),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
+                    ),
+                    const Icon(Icons.unfold_more_rounded, color: Colors.white70, size: 16),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _handleCompleteOrder(order.id),
-                  icon: const Icon(Icons.check_circle_rounded, size: 16),
-                  label: const Text('Selesaikan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ] else ...[
+            gapH12,
+
+            // Customer & Address Row
+            Row(
+              children: [
+                const Icon(Icons.person_pin_circle_rounded, color: Colors.white70, size: 20),
+                gapW8,
+                Expanded(
+                  child: Text(
+                    'Titik $activeStopIndex: $targetPharmacy (${order.deliveryAddress})',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontFamily: 'Poppins',
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+            gapH12,
+
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailPesananPage(order: order),
+                        ),
+                      ).then((_) => _fetchDashboardData());
+                    },
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('Detail Pesanan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF0054A6),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _handleCompleteOrder(order.id),
+                    icon: const Icon(Icons.check_circle_rounded, size: 16),
+                    label: Text(
+                      stopsCount > 1 ? 'Titik $activeStopIndex / Unbox' : 'Selesaikan',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

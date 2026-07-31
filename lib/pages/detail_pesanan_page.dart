@@ -112,6 +112,15 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
           }
         }
       }
+
+      // If current order is now completed/unboxed, automatically advance to next uncompleted stop
+      if (found != null && (found.status == 'READY_FOR_PICKUP_FACTURE' || found.status == 'COMPLETED')) {
+        final next = _nextUncompletedStop;
+        if (next != null) {
+          found = next;
+        }
+      }
+
       if (found != null && mounted) {
         setState(() {
           _currentOrder = found!;
@@ -562,8 +571,16 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
         ),
       ),
     );
-    if (res == true && mounted) {
-      await _refreshOrderDetails();
+    if (res != null && mounted) {
+      if (res is OrderModel) {
+        setState(() {
+          _currentOrder = res;
+          _routePoints = [];
+        });
+        await _refreshOrderDetails();
+      } else {
+        await _refreshOrderDetails();
+      }
     }
   }
 
@@ -944,7 +961,17 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
                             ),
                           ),
                         ).then((res) {
-                          if (res == true && mounted) _refreshOrderDetails();
+                          if (res != null && mounted) {
+                            if (res is OrderModel) {
+                              setState(() {
+                                _currentOrder = res;
+                                _routePoints = [];
+                              });
+                              _refreshOrderDetails();
+                            } else {
+                              _refreshOrderDetails();
+                            }
+                          }
                         });
                       },
                       icon: const Icon(Icons.check_circle_outline),
@@ -993,7 +1020,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
           },
           icon: const Icon(Icons.navigation_rounded),
           label: Text(
-            'Lanjutkan Titik (Lanjut ke ${nextStop.pharmacyName})',
+            'Lanjutkan Titik (Lanjut ke ${nextStop.customerName.isNotEmpty ? nextStop.customerName : (nextStop.pharmacyName.isNotEmpty ? nextStop.pharmacyName : 'Titik Berikutnya')})',
             style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
