@@ -469,12 +469,21 @@ $invoiceListText
                     // 1. Title Header
                     Row(
                       children: [
-                        const Icon(Icons.receipt_long_rounded, color: Color(0xFF0054A6), size: 18),
+                        Icon(
+                          inv.toUpperCase().contains('SUSULAN') ? Icons.inventory_2_rounded : Icons.receipt_long_rounded,
+                          color: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFD97706) : const Color(0xFF0054A6),
+                          size: 18,
+                        ),
                         gapW8,
                         Expanded(
                           child: Text(
-                            inv,
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, fontFamily: 'Poppins'),
+                            inv.toUpperCase().contains('SUSULAN') ? '📦 BARANG SUSULAN (Tanpa Invoice)' : inv,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              fontFamily: 'Poppins',
+                              color: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFB45309) : AppColors.darkGrey,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -488,15 +497,15 @@ $invoiceListText
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(double.infinity, 44),
-                          backgroundColor: Colors.white,
+                          backgroundColor: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFFFFBEB) : Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          side: const BorderSide(color: AppColors.primaryGreen, width: 1.2),
+                          side: BorderSide(color: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFF59E0B) : AppColors.primaryGreen, width: 1.2),
                         ),
                         onPressed: () => _pickFacturePhoto(inv),
-                        icon: const Icon(Icons.camera_alt_outlined, color: AppColors.primaryGreen, size: 18),
+                        icon: Icon(Icons.camera_alt_outlined, color: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFD97706) : AppColors.primaryGreen, size: 18),
                         label: Text(
-                          'Upload Foto Faktur Fisik ($inv)',
-                          style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primaryGreen),
+                          inv.toUpperCase().contains('SUSULAN') ? 'Upload Foto Bukti Barang Susulan' : 'Upload Foto Faktur Fisik ($inv)',
+                          style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 12, color: inv.toUpperCase().contains('SUSULAN') ? const Color(0xFFB45309) : AppColors.primaryGreen),
                         ),
                       )
                     else
@@ -547,7 +556,10 @@ $invoiceListText
                       runSpacing: 6,
                       children: [
                         ChoiceChip(
-                          label: const Text('Sesuai (Done)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                          label: Text(
+                            inv.toUpperCase().contains('SUSULAN') ? 'Barang Susulan Sesuai' : 'Sesuai (Done)',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                          ),
                           selected: stat == 'done',
                           selectedColor: const Color(0xFFD1FAE5),
                           onSelected: (val) {
