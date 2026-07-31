@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:apps_k24/models/dashboard_data.dart';
 import 'package:apps_k24/services/api_service.dart';
 import 'package:apps_k24/theme/app_colors.dart';
@@ -257,15 +258,33 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         signaturePhoto: sig,
       );
 
+      // Open WhatsApp automatically to send real-time delivery report per stop
+      await _sendWhatsAppReport(checkedPayload);
+
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Verifikasi unboxing & faktur untuk ${widget.order.customerName} berhasil disimpan!'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      // Check if there are remaining uncompleted stops in batchStops
+      final remainingStops = widget.batchStops.where((s) => s.id != widget.order.id && s.status != 'COMPLETED' && s.status != 'READY_FOR_PICKUP_FACTURE').toList();
+
+      if (remainingStops.isNotEmpty) {
+        final nextStop = remainingStops.first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Unboxing & Laporan WA terkirim! Melanjutkan ke titik berikutnya: ${nextStop.pharmacyName.isNotEmpty ? nextStop.pharmacyName : nextStop.customerName}'),
+            backgroundColor: AppColors.primaryGreen,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('🎉 Seluruh titik pengantaran selesai! Silakan lakukan pengembalian POD ke K-24 Hub.'),
+            backgroundColor: AppColors.primaryGreen,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -275,6 +294,58 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _sendWhatsAppReport(String checkedPayload) async {
+    const waNumber = '6287877807780';
+    final now = DateTime.now();
+    final dateStr = '${now.day}/${now.month}/${now.year}';
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
+    final pickupTimeStr = '${widget.order.createdAt.hour.toString().padLeft(2, '0')}:${widget.order.createdAt.minute.toString().padLeft(2, '0')} WIB';
+
+    const driverName = 'Driver K-24';
+    final apotekName = widget.order.customerName.isNotEmpty
+        ? widget.order.customerName
+        : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
+
+    final invoiceListText = _invoices.map((inv) {
+      final stat = _invoiceStatuses[inv] ?? 'done';
+      final note = stat == 'missing' ? ' (Tidak Sesuai: ${_missingNotes[inv]})' : '';
+      return '• $inv: ${stat.toUpperCase()}$note';
+    }).join('\n');
+
+    final message = '''📦 *LAPORAN REALTIME PENGANTARAN OBAT APOTEK K-24*
+-------------------------------------------------
+🗓 *Tanggal Pengiriman*: $dateStr
+⏰ *Jam Pickup*: $pickupTimeStr
+⏱ *Selesai Unboxing*: $timeStr
+
+👤 *Nama Driver*: $driverName
+📍 *Tujuan Alamat*:
+• *Nama Apotek*: $apotekName
+• *Alamat Pengiriman*: ${widget.order.deliveryAddress}
+• *No. Order*: ${widget.order.orderNumber} ${widget.order.dispatchId.isNotEmpty ? '(${widget.order.dispatchId})' : ''}
+
+📑 *Rincian Invoice Terverifikasi*:
+$invoiceListText
+• *Status Unboxing*: ✅ LENGKAP & TERVERIFIKASI
+
+-------------------------------------------------
+📌 *Laporan Otomatis*: Dikirim dari Aplikasi K-24 Driver OTMS.
+''';
+
+    final encodedMessage = Uri.encodeComponent(message);
+    final waUrl = Uri.parse('https://wa.me/$waNumber?text=$encodedMessage');
+
+    try {
+      if (await canLaunchUrl(waUrl)) {
+        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(waUrl, mode: LaunchMode.externalNonBrowserApplication);
+      }
+    } catch (e) {
+      debugPrint('[WA] Failed to launch WhatsApp: $e');
     }
   }
 
