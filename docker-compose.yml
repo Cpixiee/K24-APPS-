@@ -27,6 +27,7 @@ services:
     build:
       context: ./backend_k24apps
       dockerfile: Dockerfile
+    image: k24_backend_image:latest
     container_name: k24_backend
     restart: always
     ports:
@@ -50,6 +51,7 @@ services:
     build:
       context: ./web_k24/k24-nextjs
       dockerfile: Dockerfile
+    image: k24_frontend_image:latest
     container_name: k24_frontend
     restart: always
     ports:
