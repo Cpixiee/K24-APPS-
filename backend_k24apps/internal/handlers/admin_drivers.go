@@ -14,7 +14,11 @@ func (h *AdminHandler) GetDrivers(c *gin.Context) {
 	ctx := context.Background()
 
 	query := `
-	SELECT u.id, u.username, u.name, u.email, u.phone, 
+	SELECT u.id, 
+	       COALESCE(u.username, '') as username, 
+	       COALESCE(u.name, '') as name, 
+	       COALESCE(u.email, '') as email, 
+	       COALESCE(u.phone, '') as phone, 
 	       COALESCE(dp.plate_number, '') as plate_number, 
 	       COALESCE(dp.is_active, false) as is_active, 
 	       COALESCE(dp.rating, 5.0) as rating, 
