@@ -72,9 +72,9 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 	// 2. Fetch Aggregated Statistics
 	statsQuery := `
 	SELECT 
-		COALESCE(SUM(CASE WHEN status = 'COMPLETED' AND completed_at >= CURRENT_DATE THEN delivery_fee ELSE 0 END), 0) as today_earnings,
+		COALESCE(SUM(CASE WHEN status = 'COMPLETED' AND completed_at >= CURRENT_DATE THEN COALESCE(NULLIF(driver_fee, 0), delivery_fee) ELSE 0 END), 0) as today_earnings,
 		COUNT(CASE WHEN status = 'COMPLETED' AND completed_at >= CURRENT_DATE THEN 1 END) as today_orders,
-		COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN delivery_fee ELSE 0 END), 0) as total_earnings,
+		COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN COALESCE(NULLIF(driver_fee, 0), delivery_fee) ELSE 0 END), 0) as total_earnings,
 		COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as total_orders
 	FROM orders
 	WHERE driver_id = $1;`
@@ -95,7 +95,7 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 
 	activeQuery := `
 	SELECT o.id, o.order_number, o.driver_id, o.status, o.pharmacy_name, o.pharmacy_address, o.delivery_address, 
-	       o.customer_name, o.customer_phone, o.medicine_summary, o.delivery_fee, o.created_at,
+	       o.customer_name, o.customer_phone, o.medicine_summary, COALESCE(NULLIF(o.driver_fee, 0), NULLIF(o.delivery_fee, 0), 10500.0) as delivery_fee, o.created_at,
 	       COALESCE(mp.pickup_lat, -6.17511) as pharmacy_lat, COALESCE(mp.pickup_long, 106.865039) as pharmacy_lng,
 	       COALESCE(ap.latitude, -6.23) as customer_lat, COALESCE(ap.longitude, 106.99) as customer_lng,
 	       COALESCE(o.unboxing_option, '') as unboxing_option,
@@ -168,7 +168,7 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 	// 4. Fetch Recent Completed / Cancelled Orders (up to 10)
 	recentQuery := `
 	SELECT id, order_number, driver_id, status, pharmacy_name, pharmacy_address, delivery_address, 
-	       customer_name, customer_phone, medicine_summary, delivery_fee, created_at, completed_at
+	       customer_name, customer_phone, medicine_summary, COALESCE(NULLIF(driver_fee, 0), NULLIF(delivery_fee, 0), 10500.0) as delivery_fee, created_at, completed_at
 	FROM orders
 	WHERE driver_id = $1 AND status IN ('COMPLETED', 'CANCELLED')
 	ORDER BY completed_at DESC

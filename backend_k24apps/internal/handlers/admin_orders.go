@@ -23,7 +23,7 @@ import (
 func (h *AdminHandler) GetRecipients(c *gin.Context) {
 	ctx := context.Background()
 	rows, err := h.DB.Query(ctx,
-		`SELECT id, nama_apotek, alamat_lengkap, latitude, longitude FROM alamat_penerima ORDER BY nama_apotek ASC;`)
+		`SELECT id, nama_apotek, alamat_lengkap, latitude, longitude, COALESCE(zona, 0) FROM alamat_penerima ORDER BY nama_apotek ASC;`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memuat daftar master alamat penerima: " + err.Error()})
 		return
@@ -33,7 +33,7 @@ func (h *AdminHandler) GetRecipients(c *gin.Context) {
 	recipients := []models.Recipient{}
 	for rows.Next() {
 		var rec models.Recipient
-		if err := rows.Scan(&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude); err == nil {
+		if err := rows.Scan(&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude, &rec.Zona); err == nil {
 			recipients = append(recipients, rec)
 		}
 	}
@@ -155,7 +155,11 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 	userID := userIDVal.(int)
 	ctx := context.Background()
 
-	originLat, originLong, activeRate := loadMitraRates(h.DB, ctx, userID, req.Armada, req.RateType)
+	fullRates := loadMitraFullRates(h.DB, ctx, userID)
+	originLat, originLong := fullRates.OriginLat, fullRates.OriginLong
+	activeRate := resolveRate(req.Armada, req.RateType,
+		&fullRates.MotorDimensi, &fullRates.MotorKm, &fullRates.MotorTitik, &fullRates.MotorBerat,
+		&fullRates.MobilDimensi, &fullRates.MobilKm, &fullRates.MobilTitik, &fullRates.MobilBerat, &fullRates.MobilLumpsum)
 
 	// Resolve lat/lng for all items first
 	resolved := []resolvedBulkItem{}
@@ -193,15 +197,62 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		TotalPrice: 0,
 	}
 
+	lastZonedLat, lastZonedLng := originLat, originLong
+
 	for i, r := range sorted {
 		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
-		rowPrice := calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
+		var rowPrice float64
+		var matchedZona int
+		var rateLabel string
+
+		rec, _ := findRecipient(h.DB, r.item.NamaApotek, r.item.AlamatLengkap)
+		var driverFee float64
+		if req.RateType == "zona" {
+			if rec != nil && rec.Zona > 0 {
+				matchedZona = rec.Zona
+				switch rec.Zona {
+				case 1:
+					rowPrice = fullRates.MotorZona1
+					driverFee = 10500.0
+				case 2:
+					rowPrice = fullRates.MotorZona2
+					driverFee = 17500.0
+				case 3:
+					rowPrice = fullRates.MotorZona3
+					driverFee = 24500.0
+				}
+				rateLabel = fmt.Sprintf("Zona %d", matchedZona)
+				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+			} else {
+				// Outside zone database: automatically switch to KM rate calculated from last zoned stop
+				distFromLast, _ := calculateDistance(h.DB, lastZonedLat, lastZonedLng, r.latitude, r.longitude)
+				kmRate := fullRates.MotorKm
+				if kmRate == 0 {
+					kmRate = 2000
+				}
+				rowPrice = distFromLast * kmRate
+				driverFee = distFromLast * 1750.0
+				rateLabel = fmt.Sprintf("Tarif KM (%.1f km)", distFromLast)
+				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+			}
+		} else {
+			rowPrice = calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
+			if req.RateType == "km" {
+				driverFee = distKm * 1750.0
+			} else {
+				driverFee = rowPrice
+			}
+			rateLabel = fmt.Sprintf("Skema %s", req.RateType)
+		}
 
 		response.Items = append(response.Items, models.CalculatedItemResult{
 			NamaApotek:    r.item.NamaApotek,
 			AlamatLengkap: r.item.AlamatLengkap,
 			JarakKm:       math.Round(distKm*100) / 100,
 			Price:         math.Round(rowPrice),
+			DriverFee:     math.Round(driverFee),
+			Zona:          matchedZona,
+			RateLabel:     rateLabel,
 		})
 		response.TotalPrice += math.Round(rowPrice)
 	}
@@ -258,7 +309,10 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 	nextNum := maxNum + 1
 	orderBaseNumber := fmt.Sprintf("ORDER-%06d", nextNum)
 
-	_, activeRate := loadMitraRatesFromDB(h.DB, ctx, userID, req.Armada, req.RateType)
+	fullRates := loadMitraFullRates(h.DB, ctx, userID)
+	activeRate := resolveRate(req.Armada, req.RateType,
+		&fullRates.MotorDimensi, &fullRates.MotorKm, &fullRates.MotorTitik, &fullRates.MotorBerat,
+		&fullRates.MobilDimensi, &fullRates.MobilKm, &fullRates.MobilTitik, &fullRates.MobilBerat, &fullRates.MobilLumpsum)
 
 	// Resolve lat/lng for all items first
 	resolved := []resolvedBulkItem{}
@@ -288,27 +342,68 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 	sorted := sortBulkItemsNearestNeighbor(originLat, originLong, resolved)
 
 	savedOrders := []models.Order{}
+	lastZonedLat, lastZonedLng := originLat, originLong
 
 	for i, r := range sorted {
 		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
-		rowPrice := math.Round(calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i))
+		var rowPrice float64
+		rec, _ := findRecipient(h.DB, r.item.NamaApotek, r.item.AlamatLengkap)
+		var driverFee float64
 
+		if req.RateType == "zona" {
+			if rec != nil && rec.Zona > 0 {
+				switch rec.Zona {
+				case 1:
+					rowPrice = fullRates.MotorZona1
+					driverFee = 10500.0
+				case 2:
+					rowPrice = fullRates.MotorZona2
+					driverFee = 17500.0
+				case 3:
+					rowPrice = fullRates.MotorZona3
+					driverFee = 24500.0
+				}
+				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+			} else {
+				distFromLast, _ := calculateDistance(h.DB, lastZonedLat, lastZonedLng, r.latitude, r.longitude)
+				kmRate := fullRates.MotorKm
+				if kmRate == 0 {
+					kmRate = 2000
+				}
+				rowPrice = distFromLast * kmRate
+				driverFee = distFromLast * 1750.0
+				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+			}
+		} else {
+			rowPrice = calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
+			if req.RateType == "km" {
+				driverFee = distKm * 1750.0
+			} else {
+				driverFee = rowPrice
+			}
+		}
+
+		rowPrice = math.Round(rowPrice)
+		driverFee = math.Round(driverFee)
 		summary := buildSummary(req.Armada, req.RateType, r.item.Invoices)
 		rowOrderNumber := fmt.Sprintf("%s-%d", orderBaseNumber, i+1)
 
 		insertOrderQuery := `
-		INSERT INTO orders (order_number, parent_order_number, mitra_id, dispatch_id, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, distance_km)
-		VALUES ($1, $2, $3, '', 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING id, order_number, parent_order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, distance_km, created_at;`
+		INSERT INTO orders (order_number, parent_order_number, mitra_id, dispatch_id, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, driver_fee, distance_km)
+		VALUES ($1, $2, $3, '', 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, order_number, parent_order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, driver_fee, distance_km, created_at;`
 
 		var order models.Order
 		err = tx.QueryRow(ctx, insertOrderQuery,
 			rowOrderNumber, orderBaseNumber, userID,
 			originName, originAddress, r.item.AlamatLengkap,
-			r.item.NamaApotek, "08123456789", summary, rowPrice, distKm,
-		).Scan(&order.ID, &order.OrderNumber, &order.ParentOrderNumber, &order.Status, &order.PharmacyName,
-			&order.PharmacyAddress, &order.DeliveryAddress, &order.CustomerName,
-			&order.CustomerPhone, &order.MedicineSummary, &order.DeliveryFee, &order.DistanceKM, &order.CreatedAt)
+			r.item.NamaApotek, originName, summary, rowPrice, driverFee, distKm,
+		).Scan(
+			&order.ID, &order.OrderNumber, &order.ParentOrderNumber, &order.Status,
+			&order.PharmacyName, &order.PharmacyAddress, &order.DeliveryAddress,
+			&order.CustomerName, &order.CustomerPhone, &order.MedicineSummary,
+			&order.DeliveryFee, &order.DriverFee, &order.DistanceKM, &order.CreatedAt,
+		)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -912,17 +1007,62 @@ func resolveRate(armada, rateType string, motDim, motKm, motTit, motBer, mobDim,
 	return rate
 }
 
+type MitraRates struct {
+	OriginLat, OriginLong float64
+	MotorKm, MotorTitik, MotorDimensi, MotorBerat float64
+	MotorZona1, MotorZona2, MotorZona3 float64
+	MobilKm, MobilTitik, MobilDimensi, MobilBerat, MobilLumpsum float64
+}
+
+func loadMitraFullRates(db *pgxpool.Pool, ctx context.Context, userID int) MitraRates {
+	rates := MitraRates{
+		OriginLat: -7.782889, OriginLong: 110.377042,
+		MotorKm: 1750, MotorTitik: 10000, MotorDimensi: 1333.33, MotorBerat: 5000,
+		MotorZona1: 10500, MotorZona2: 17500, MotorZona3: 24500,
+		MobilKm: 2500, MobilTitik: 12000, MobilDimensi: 1500, MobilBerat: 6000, MobilLumpsum: 700000,
+	}
+
+	var mDim, mKm, mTit, mBer, mZ1, mZ2, mZ3 *float64
+	var mbDim, mbKm, mbTit, mbBer, mbLump *float64
+
+	_ = db.QueryRow(ctx, `
+	SELECT pickup_lat, pickup_long,
+	       motor_dimensi, motor_km, motor_titik, motor_berat, motor_zona1, motor_zona2, motor_zona3,
+	       mobil_dimensi, mobil_km, mobil_titik, mobil_berat, mobil_lumpsum
+	FROM mitra_profiles WHERE user_id = $1;`, userID).Scan(
+		&rates.OriginLat, &rates.OriginLong,
+		&mDim, &mKm, &mTit, &mBer, &mZ1, &mZ2, &mZ3,
+		&mbDim, &mbKm, &mbTit, &mbBer, &mbLump,
+	)
+
+	if mDim != nil && *mDim > 0 { rates.MotorDimensi = *mDim }
+	if mKm != nil && *mKm > 0 { rates.MotorKm = *mKm }
+	if mTit != nil && *mTit > 0 { rates.MotorTitik = *mTit }
+	if mBer != nil && *mBer > 0 { rates.MotorBerat = *mBer }
+	if mZ1 != nil && *mZ1 > 0 { rates.MotorZona1 = *mZ1 }
+	if mZ2 != nil && *mZ2 > 0 { rates.MotorZona2 = *mZ2 }
+	if mZ3 != nil && *mZ3 > 0 { rates.MotorZona3 = *mZ3 }
+
+	if mbDim != nil && *mbDim > 0 { rates.MobilDimensi = *mbDim }
+	if mbKm != nil && *mbKm > 0 { rates.MobilKm = *mbKm }
+	if mbTit != nil && *mbTit > 0 { rates.MobilTitik = *mbTit }
+	if mbBer != nil && *mbBer > 0 { rates.MobilBerat = *mbBer }
+	if mbLump != nil && *mbLump > 0 { rates.MobilLumpsum = *mbLump }
+
+	return rates
+}
+
 // ─── Geocoding & Routing helpers ──────────────────────────────────────────────
 
 func findRecipient(db *pgxpool.Pool, namaApotek, alamatLengkap string) (*models.Recipient, error) {
 	ctx := context.Background()
 	var rec models.Recipient
 	err := db.QueryRow(ctx, `
-	SELECT id, nama_apotek, alamat_lengkap, latitude, longitude 
+	SELECT id, nama_apotek, alamat_lengkap, latitude, longitude, COALESCE(zona, 0)
 	FROM alamat_penerima 
 	WHERE LOWER(nama_apotek) = LOWER($1) OR LOWER(alamat_lengkap) = LOWER($2)
 	LIMIT 1;`, namaApotek, alamatLengkap).Scan(
-		&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude)
+		&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude, &rec.Zona)
 	if err == nil {
 		return &rec, nil
 	}

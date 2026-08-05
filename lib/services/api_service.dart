@@ -40,48 +40,31 @@ class ApiService {
     await _autoDiscoverServer();
   }
 
-  /// Connect to Public Server http://103.236.140.19:9001/api or LAN fallback
+  /// Connect to Localhost (10.0.2.2:8087 / 127.0.0.1:8087) first, then LAN, then Public Server
   static Future<void> _autoDiscoverServer() async {
-    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) return;
+    final localUrls = [
+      'http://10.0.2.2:8087/api',
+      'http://127.0.0.1:8087/api',
+      'http://192.168.18.228:8087/api',
+      _publicServerUrl,
+    ];
 
-    // 1. Coba Server Publik IP (103.236.140.19:9001)
-    try {
-      final response = await http
-          .get(Uri.parse('$_publicServerUrl/health'))
-          .timeout(const Duration(seconds: 2));
-      if (response.statusCode == 200) {
-        _customBaseUrl = _publicServerUrl;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('custom_base_url', _publicServerUrl);
-        debugPrint('[API] Server Publik terhubung: $_publicServerUrl');
-        return;
-      }
-    } catch (_) {}
+    for (final url in localUrls) {
+      try {
+        final response = await http
+            .get(Uri.parse('$url/health'))
+            .timeout(const Duration(milliseconds: 1500));
+        if (response.statusCode == 200) {
+          _customBaseUrl = url;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('custom_base_url', url);
+          debugPrint('[API] Server terhubung: $url');
+          return;
+        }
+      } catch (_) {}
+    }
 
-    // 2. Coba IP LAN Server lokal fallback
-    final knownUrl = 'http://192.168.18.228:8087/api';
-    try {
-      final response = await http
-          .get(Uri.parse('$knownUrl/health'))
-          .timeout(const Duration(seconds: 1));
-      if (response.statusCode == 200) {
-        _customBaseUrl = knownUrl;
-        debugPrint('[API] Server LAN Lokal terhubung: $knownUrl');
-        return;
-      }
-    } catch (_) {}
-
-    // 3. Coba 10.0.2.2 jika di Android Emulator bridge ke host
-    try {
-      final emulatorUrl = 'http://10.0.2.2:8087/api';
-      final res = await http
-          .get(Uri.parse('$emulatorUrl/health'))
-          .timeout(const Duration(seconds: 1));
-      if (res.statusCode == 200) {
-        _customBaseUrl = emulatorUrl;
-        return;
-      }
-    } catch (_) {}
+    _customBaseUrl = 'http://10.0.2.2:8087/api';
   }
 
   static Future<void> fetchServerLanIp() async {

@@ -20,24 +20,28 @@ type OrderRow = ReturnType<typeof INITIAL_ROW>
 
 interface MitraProfile {
   motor_km?: number; motor_titik?: number; motor_dimensi?: number; motor_berat?: number
+  motor_zona1?: number; motor_zona2?: number; motor_zona3?: number
   mobil_km?: number; mobil_titik?: number; mobil_dimensi?: number; mobil_berat?: number; mobil_lumpsum?: number
+  mobil_zona1?: number; mobil_zona2?: number; mobil_zona3?: number
 }
 
 interface Recipient {
-  nama_apotek: string; alamat_lengkap: string; latitude?: number; longitude?: number
+  nama_apotek: string; alamat_lengkap: string; latitude?: number; longitude?: number; zona?: number
 }
 
 interface PreviewItem {
-  nama_apotek: string; price?: number; jarak_km?: number; warning?: string
+  nama_apotek: string; price?: number; jarak_km?: number; zona?: number; rate_label?: string; warning?: string
 }
 
 const inputClass = 'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-foreground'
+
+const formatRp = (n?: number | null) => n != null ? `Rp ${Math.round(n).toLocaleString('id-ID')}` : '-'
 
 export default function CreateOrderPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [selectedArmada, setSelectedArmada] = useState<'motor' | 'mobil'>('motor')
-  const [selectedRate, setSelectedRate] = useState('km')
+  const [selectedRate, setSelectedRate] = useState('zona')
   const [inputMethod, setInputMethod] = useState<'manual' | 'csv'>('manual')
   const [mitraProfile, setMitraProfile] = useState<MitraProfile | null>(null)
   const [recipients, setRecipients] = useState<Recipient[]>([])
@@ -70,26 +74,32 @@ export default function CreateOrderPage() {
 
   useEffect(() => { fetchProfile(); fetchRecipients() }, [fetchProfile, fetchRecipients])
 
-  // Filter rate configurations: only show rates that are configured (val > 0)
+  // Filter rate configurations: show Skema Zona as primary option + configured standard rates
   const motorRates = useMemo(() => {
     if (!mitraProfile) return []
-    return [
-      { key: 'km', label: 'Skema KM', val: mitraProfile.motor_km, unit: '/km' },
-      { key: 'titik', label: 'Skema Titik', val: mitraProfile.motor_titik, unit: '/titik' },
-      { key: 'dimensi', label: 'Skema Dimensi', val: mitraProfile.motor_dimensi, unit: '/dm³' },
-      { key: 'berat', label: 'Skema Berat', val: mitraProfile.motor_berat, unit: '/kg' },
-    ].filter((r) => r.val != null && r.val > 0)
+    const z1 = mitraProfile.motor_zona1 || 20000
+    const z2 = mitraProfile.motor_zona2 || 25000
+    const z3 = mitraProfile.motor_zona3 || 30000
+    const list = [
+      { key: 'zona', label: 'Skema Zona (Surabaya)', valLabel: `Z1: ${formatRp(z1)} | Z2: ${formatRp(z2)} | Z3: ${formatRp(z3)}`, val: z1, unit: '/zona' },
+      { key: 'km', label: 'Skema KM', valLabel: formatRp(mitraProfile.motor_km), val: mitraProfile.motor_km, unit: '/km' },
+      { key: 'titik', label: 'Skema Titik', valLabel: formatRp(mitraProfile.motor_titik), val: mitraProfile.motor_titik, unit: '/titik' },
+      { key: 'dimensi', label: 'Skema Dimensi', valLabel: formatRp(mitraProfile.motor_dimensi), val: mitraProfile.motor_dimensi, unit: '/dm³' },
+      { key: 'berat', label: 'Skema Berat', valLabel: formatRp(mitraProfile.motor_berat), val: mitraProfile.motor_berat, unit: '/kg' },
+    ]
+    return list.filter((r) => r.key === 'zona' || (r.val != null && r.val > 0))
   }, [mitraProfile])
 
   const mobilRates = useMemo(() => {
     if (!mitraProfile) return []
-    return [
+    const list = [
       { key: 'km', label: 'Skema KM', val: mitraProfile.mobil_km, unit: '/km' },
       { key: 'titik', label: 'Skema Titik', val: mitraProfile.mobil_titik, unit: '/titik' },
       { key: 'dimensi', label: 'Skema Dimensi', val: mitraProfile.mobil_dimensi, unit: '/dm³' },
       { key: 'berat', label: 'Skema Berat', val: mitraProfile.mobil_berat, unit: '/kg' },
       { key: 'lumpsum', label: 'Skema Lumpsum', val: mitraProfile.mobil_lumpsum, unit: '/unit' },
-    ].filter((r) => r.val != null && r.val > 0)
+    ]
+    return list.filter((r) => r.val != null && r.val > 0)
   }, [mitraProfile])
 
   // Auto-switch rate when armada changes
@@ -387,7 +397,6 @@ export default function CreateOrderPage() {
     }
   }
 
-  const formatRp = (n?: number) => n != null ? `Rp ${n.toLocaleString('id-ID')}` : '-'
   const totalEstimated = preview?.total_price
 
   // Search filter for popup search apotek
@@ -519,8 +528,8 @@ export default function CreateOrderPage() {
                         )}
                       >
                         <span className="text-sm font-semibold text-foreground">{r.label}</span>
-                        <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
-                          {formatRp(r.val)} <span className="text-xs font-normal text-muted-foreground">{r.unit}</span>
+                        <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">
+                          {r.valLabel}
                         </span>
                       </div>
                     ))
@@ -799,8 +808,18 @@ export default function CreateOrderPage() {
                         {/* Estimation */}
                         <td className="px-4 py-4 text-xs font-semibold align-top">
                           {previewItem ? (
-                            <div className="flex flex-col">
-                              {/* Price hidden per user request */}
+                            <div className="flex flex-col gap-1">
+                              {previewItem.rate_label && (
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold w-fit",
+                                  previewItem.zona === 1 ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" :
+                                  previewItem.zona === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" :
+                                  previewItem.zona === 3 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" :
+                                  "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+                                )}>
+                                  {previewItem.rate_label}
+                                </span>
+                              )}
                               {selectedRate === 'km' && previewItem.jarak_km && (
                                 <span className="text-[10px] text-muted-foreground font-normal">{previewItem.jarak_km.toFixed(1)} km</span>
                               )}
@@ -919,7 +938,18 @@ export default function CreateOrderPage() {
                         className="w-full text-left p-3 rounded-xl border border-transparent hover:border-blue-500/20 hover:bg-blue-50/20 transition-all flex items-start justify-between"
                       >
                         <div className="min-w-0 pr-3">
-                          <p className="text-sm font-semibold truncate text-foreground">{rec.nama_apotek}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold truncate text-foreground">{rec.nama_apotek}</p>
+                            {rec.zona && rec.zona > 0 ? (
+                              <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                Zona {rec.zona}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold rounded bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                Non-Zona (Tarif KM)
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{rec.alamat_lengkap}</p>
                         </div>
                         <Check className="h-4 w-4 text-blue-600 opacity-0 group-hover:opacity-100 shrink-0" />

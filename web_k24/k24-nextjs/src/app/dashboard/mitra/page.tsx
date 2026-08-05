@@ -21,6 +21,7 @@ const INITIAL_FORM = {
   username: '', email: '', name: '', phone: '', password: '',
   pic_name: '', pic_nik: '', alamat_lengkap: '', pickup_index: '', custom_pickup: '',
   motor_dimensi: '', motor_km: '', motor_titik: '', motor_berat: '',
+  motor_zona1: '10500', motor_zona2: '17500', motor_zona3: '24500',
   mobil_dimensi: '', mobil_km: '', mobil_titik: '', mobil_berat: '', mobil_lumpsum: '',
 }
 
@@ -107,11 +108,11 @@ export default function MitraPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const hasMotor = ['motor_dimensi', 'motor_km', 'motor_titik', 'motor_berat'].some((k) => form[k as keyof FormData] !== '')
+    const hasMotor = ['motor_dimensi', 'motor_km', 'motor_titik', 'motor_berat', 'motor_zona1', 'motor_zona2', 'motor_zona3'].some((k) => form[k as keyof FormData] !== '')
     const hasMobil = ['mobil_dimensi', 'mobil_km', 'mobil_titik', 'mobil_berat', 'mobil_lumpsum'].some((k) => form[k as keyof FormData] !== '')
     const e2: FormErrors = {}
-    if (!hasMotor) e2.motor = 'Minimal 1 komponen tarif Motor wajib diisi'
-    if (!hasMobil) e2.mobil = 'Minimal 1 komponen tarif Mobil wajib diisi'
+    if (!hasMotor) e2.motor = 'Minimal 1 skema tarif Motor wajib diisi (misal Skema Zona atau Skema KM)'
+    if (!hasMobil) e2.mobil = 'Minimal 1 skema tarif Mobil wajib diisi'
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
 
     setSubmitting(true)
@@ -301,75 +302,85 @@ export default function MitraPage() {
 
           {/* STEP 2: Data Identitas & Pickup */}
           {step === 2 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2 flex items-center justify-between pb-2 border-b border-border mb-2">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Kategori Terpilih: <strong className={mitraType === 'PRIMAKU' ? 'text-purple-600' : 'text-blue-600'}>{mitraType === 'PRIMAKU' ? 'Primaku Partner' : 'Franchise K-24'}</strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="text-xs font-medium text-blue-600 hover:underline"
-                >
-                  Ubah Kategori
-                </button>
+            <div className="space-y-5 bg-card border border-border p-6 rounded-2xl shadow-sm">
+              <h2 className="text-base font-semibold border-b border-border pb-3">Informasi Akun & Outlet Mitra ({mitraType})</h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Nama Apotek / Mitra" error={errors.name}>
+                  <InputField placeholder="e.g. Apotek K-24 Setiabudi" value={form.name} onChange={(e) => setField('name', e.target.value)} />
+                </FormField>
+                <FormField label="No. Telepon / WhatsApp" error={errors.phone}>
+                  <InputField placeholder="08123456789" value={form.phone} onChange={(e) => setField('phone', e.target.value)} />
+                </FormField>
+                <FormField label="Email Mitra" error={errors.email}>
+                  <InputField type="email" placeholder="mitra@k24.co.id" value={form.email} onChange={(e) => setField('email', e.target.value)} />
+                </FormField>
+                <FormField label="Username Login" error={errors.username}>
+                  <InputField placeholder="k24_setiabudi" value={form.username} onChange={(e) => setField('username', e.target.value)} />
+                </FormField>
+                <FormField label="Password" error={errors.password}>
+                  <InputField type="password" placeholder="••••••••" value={form.password} onChange={(e) => setField('password', e.target.value)} />
+                </FormField>
               </div>
 
-              <div className="sm:col-span-2">
-                <FormField label="Nama Mitra / Outlet" error={errors.name}>
-                  <InputField placeholder={mitraType === 'PRIMAKU' ? "Contoh: PRIMAKU-JAKARTA" : "Contoh: K24-BUMIINDAH"} value={form.name} onChange={(e) => setField('name', e.target.value)} error={errors.name} />
+              <h2 className="text-base font-semibold border-b border-border pb-3 pt-2">Informasi Penanggung Jawab (PIC) & Lokasi Pickup</h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Nama Lengkap PIC" error={errors.pic_name}>
+                  <InputField placeholder="Nama Penanggung Jawab Outlet" value={form.pic_name} onChange={(e) => setField('pic_name', e.target.value)} />
+                </FormField>
+                <FormField label="NIK PIC (KTP)" error={errors.pic_nik}>
+                  <InputField placeholder="3271234567890001" value={form.pic_nik} onChange={(e) => setField('pic_nik', e.target.value)} />
                 </FormField>
               </div>
-              <FormField label="No. HP PIC" error={errors.phone}>
-                <InputField type="tel" placeholder="08123456789" value={form.phone} onChange={(e) => setField('phone', e.target.value.replace(/\D/g, ''))} error={errors.phone} />
+
+              <FormField label="Alamat Lengkap Outlet / Hub" error={errors.alamat_lengkap}>
+                <textarea
+                  rows={2}
+                  placeholder="Jl. Raya Setiabudi No. 123, Jakarta Selatan"
+                  value={form.alamat_lengkap}
+                  onChange={(e) => setField('alamat_lengkap', e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-foreground"
+                />
               </FormField>
-              <FormField label="Email (Opsional)" error={errors.email}>
-                <InputField type="email" placeholder="email@mitra.com" value={form.email} onChange={(e) => setField('email', e.target.value)} error={errors.email} />
-              </FormField>
-              <FormField label="Username Akses" error={errors.username}>
-                <InputField placeholder={mitraType === 'PRIMAKU' ? "primaku_jkt" : "k24bumiindah"} value={form.username} onChange={(e) => setField('username', e.target.value)} error={errors.username} />
-              </FormField>
-              <FormField label="Password" error={errors.password}>
-                <InputField type="password" placeholder="Min. 6 karakter" value={form.password} onChange={(e) => setField('password', e.target.value)} error={errors.password} />
-              </FormField>
-              <FormField label="Nama PIC Penanggung Jawab" error={errors.pic_name}>
-                <InputField placeholder="Nama lengkap PIC" value={form.pic_name} onChange={(e) => setField('pic_name', e.target.value)} error={errors.pic_name} />
-              </FormField>
-              <FormField label="NIK PIC" error={errors.pic_nik}>
-                <InputField placeholder="16 digit NIK" value={form.pic_nik} onChange={(e) => setField('pic_nik', e.target.value)} error={errors.pic_nik} />
-              </FormField>
-              <div className="sm:col-span-2">
-                <FormField label="Alamat Lengkap Outlet / Mitra" error={errors.alamat_lengkap}>
-                  <InputField placeholder="Jl. ... No. ... Kota ..." value={form.alamat_lengkap} onChange={(e) => setField('alamat_lengkap', e.target.value)} error={errors.alamat_lengkap} />
-                </FormField>
-              </div>
-              <div className="sm:col-span-2">
-                <FormField label={mitraType === 'PRIMAKU' ? "Alamat Pickup Primaku" : "Alamat Pickup (Gudang K-24)"} error={errors.pickup_index}>
-                  <select
-                    value={form.pickup_index}
-                    onChange={(e) => setField('pickup_index', e.target.value)}
-                    className={`h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none transition-all focus:ring-2 ${errors.pickup_index ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20' : 'border-border focus:border-blue-500 focus:ring-blue-500/20'}`}
-                  >
-                    <option value="">-- Pilih Lokasi Pickup --</option>
-                    {(mitraType === 'PRIMAKU' ? PICKUP_LOCATIONS_PRIMAKU : PICKUP_LOCATIONS_K24).map((loc, i) => (
-                      <option key={i} value={i}>{loc.name}</option>
-                    ))}
-                  </select>
-                  {errors.pickup_index && <p className="text-xs text-red-500 mt-1">{errors.pickup_index}</p>}
-                </FormField>
-              </div>
-              <div className="sm:col-span-2 flex justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="flex items-center gap-2 h-10 px-5 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors"
+
+              <FormField label="Pilih Lokasi Titik Penjemputan (Pickup)" error={errors.pickup_index}>
+                <select
+                  value={form.pickup_index}
+                  onChange={(e) => {
+                    setField('pickup_index', e.target.value)
+                    if (e.target.value !== '') setField('custom_pickup', '')
+                  }}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-blue-500 text-foreground"
                 >
+                  <option value="">-- Pilih Titik Pickup Terdaftar --</option>
+                  {(mitraType === 'PRIMAKU' ? PICKUP_LOCATIONS_PRIMAKU : PICKUP_LOCATIONS_K24).map((loc, idx) => (
+                    <option key={idx} value={idx.toString()}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Atau Custom Nama Titik Pickup (Jika Tidak Ada di Daftar)">
+                <InputField
+                  placeholder="e.g. Gudang K-24 Cabang Surabaya Selatan"
+                  value={form.custom_pickup}
+                  onChange={(e) => {
+                    setField('custom_pickup', e.target.value)
+                    if (e.target.value) setField('pickup_index', '')
+                  }}
+                />
+              </FormField>
+
+              <div className="flex justify-between pt-4">
+                <button type="button" onClick={() => setStep(1)} className="flex items-center gap-2 h-10 px-5 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors">
                   <ChevronLeft className="h-4 w-4" /> Kembali
                 </button>
                 <button
                   type="button"
                   onClick={() => { if (validateStep2()) setStep(3) }}
-                  className="flex items-center gap-2 h-10 px-6 rounded-lg bg-gradient-to-r from-blue-600 to-slate-700 text-white text-sm font-medium hover:from-blue-700 hover:to-slate-800 transition-all"
+                  className="flex items-center gap-2 h-10 px-6 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 transition-colors shadow-md shadow-blue-500/20"
                 >
                   Lanjut ke Tarif Armada <ChevronRight className="h-4 w-4" />
                 </button>
@@ -377,46 +388,52 @@ export default function MitraPage() {
             </div>
           )}
 
-          {/* STEP 3: Tarif Armada */}
+          {/* STEP 3 */}
           {step === 3 && (
             <div className="space-y-6">
-              {/* Motor tariffs */}
-              <div className="border border-border rounded-xl overflow-hidden bg-card shadow-sm transition-all duration-300">
+              <div className="border border-border rounded-2xl bg-card overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setMotorOpen(!motorOpen)}
-                  className="w-full flex items-center justify-between p-4 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
+                  className="w-full flex items-center justify-between p-4 bg-muted/30"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
-                      <Bike className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground">Tarif Armada Motor</h3>
-                      <p className="text-xs text-muted-foreground">Minimal 1 komponen tarif motor wajib diisi</p>
-                    </div>
+                    <Bike className="h-5 w-5 text-blue-600" />
+                    <span className="font-semibold">Tarif Armada Motor</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {errors.motor && <span className="text-xs font-medium text-red-500">{errors.motor}</span>}
-                    <ChevronDown
-                      className={`h-5 w-5 text-muted-foreground transition-transform duration-300 ${
-                        motorOpen ? 'rotate-180' : 'rotate-0'
-                      }`}
-                    />
-                  </div>
+                  <ChevronDown className={`h-5 w-5 transition-transform ${motorOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 <div
                   className={`transition-all duration-300 ease-in-out ${
-                    motorOpen ? 'max-h-[500px] border-t border-border opacity-100 p-4' : 'max-h-0 opacity-0 pointer-events-none'
-                  } overflow-hidden`}
+                    motorOpen ? 'max-h-[800px] border-t border-border opacity-100 p-4' : 'max-h-0 opacity-0 pointer-events-none'
+                  } overflow-hidden space-y-4`}
                 >
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tarif Standar (Non-Zona)</div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[{key:'motor_km',label:'Per KM (Rp)'},{key:'motor_titik',label:'Per Titik (Rp)'},{key:'motor_dimensi',label:'Per Dimensi (Rp)'},{key:'motor_berat',label:'Per Berat (Rp)'}].map(({key,label}) => (
                       <FormField key={key} label={label}>
                         <InputField type="number" placeholder="0" value={form[key as keyof FormData]} onChange={(e) => setField(key as keyof FormData, e.target.value)} />
                       </FormField>
                     ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-border/60">
+                    <div className="flex flex-col gap-1 mb-3">
+                      <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                        Tarif Skema Zona (Surabaya / Sidoarjo) - Tagihan Mitra
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Isikan tarif yang ditagihkan ke mitra. Pendapatan bersih driver otomatis diset: <strong>Zona 1 = Rp 10.500</strong> | <strong>Zona 2 = Rp 17.500</strong> | <strong>Zona 3 = Rp 24.500</strong> | <strong>Non-Zona = Rp 1.750/KM</strong>.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[{key:'motor_zona1',label:'Tagihan Zona 1 (Rp)'},{key:'motor_zona2',label:'Tagihan Zona 2 (Rp)'},{key:'motor_zona3',label:'Tagihan Zona 3 (Rp)'}].map(({key,label}) => (
+                        <FormField key={key} label={label}>
+                          <InputField type="number" placeholder="20000" value={form[key as keyof FormData]} onChange={(e) => setField(key as keyof FormData, e.target.value)} />
+                        </FormField>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -432,29 +449,17 @@ export default function MitraPage() {
               </div>
 
               {/* Mobil tariffs */}
-              <div className="border border-border rounded-xl overflow-hidden bg-card shadow-sm transition-all duration-300">
+              <div className="border border-border rounded-2xl bg-card overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setMobilOpen(!mobilOpen)}
-                  className="w-full flex items-center justify-between p-4 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
+                  className="w-full flex items-center justify-between p-4 bg-muted/30"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
-                      <Car className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground">Tarif Armada Mobil</h3>
-                      <p className="text-xs text-muted-foreground">Minimal 1 komponen tarif mobil wajib diisi</p>
-                    </div>
+                    <Car className="h-5 w-5 text-emerald-600" />
+                    <span className="font-semibold">Tarif Armada Mobil</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {errors.mobil && <span className="text-xs font-medium text-red-500">{errors.mobil}</span>}
-                    <ChevronDown
-                      className={`h-5 w-5 text-muted-foreground transition-transform duration-300 ${
-                        mobilOpen ? 'rotate-180' : 'rotate-0'
-                      }`}
-                    />
-                  </div>
+                  <ChevronDown className={`h-5 w-5 transition-transform ${mobilOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 <div
@@ -476,7 +481,7 @@ export default function MitraPage() {
                 <button type="button" onClick={() => setStep(2)} className="flex items-center gap-2 h-10 px-5 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors">
                   <ChevronLeft className="h-4 w-4" /> Kembali
                 </button>
-                <button type="submit" disabled={submitting} className="flex items-center gap-2 h-10 px-6 rounded-lg bg-gradient-to-r from-blue-600 to-slate-700 text-white text-sm font-medium hover:from-blue-700 hover:to-slate-800 transition-all disabled:opacity-70">
+                <button type="submit" disabled={submitting} className="flex items-center gap-2 h-10 px-6 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 disabled:opacity-70">
                   {submitting ? 'Menyimpan...' : 'Simpan Mitra'}
                 </button>
               </div>

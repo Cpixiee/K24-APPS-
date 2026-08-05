@@ -123,7 +123,9 @@ class OrderModel {
       customerName: json['customer_name'] as String? ?? '',
       customerPhone: json['customer_phone'] as String? ?? '',
       medicineSummary: json['medicine_summary'] as String? ?? '',
-      deliveryFee: (json['delivery_fee'] as num?)?.toDouble() ?? 0.0,
+      deliveryFee: (json['driver_fee'] != null && (json['driver_fee'] as num).toDouble() > 0)
+          ? (json['driver_fee'] as num).toDouble()
+          : ((json['delivery_fee'] as num?)?.toDouble() ?? 0.0),
       createdAt: json['created_at'] != null 
           ? DateTime.parse(json['created_at'] as String) 
           : DateTime.now(),

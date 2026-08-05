@@ -121,14 +121,14 @@ func (h *AdminHandler) CreateMitra(c *gin.Context) {
 	insertProfileQuery := `
 	INSERT INTO mitra_profiles (
 		user_id, pic_name, pic_nik, alamat_lengkap, pickup_name, pickup_lat, pickup_long, mitra_type,
-		motor_dimensi, motor_km, motor_titik, motor_berat,
+		motor_dimensi, motor_km, motor_titik, motor_berat, motor_zona1, motor_zona2, motor_zona3,
 		mobil_dimensi, mobil_km, mobil_titik, mobil_berat, mobil_lumpsum
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20);`
 
 	_, err = tx.Exec(ctx, insertProfileQuery,
 		user.ID, req.PicName, req.PicNik, req.AlamatLengkap,
 		req.PickupName, req.PickupLat, req.PickupLong, mitraType,
-		req.MotorDimensi, req.MotorKm, req.MotorTitik, req.MotorBerat,
+		req.MotorDimensi, req.MotorKm, req.MotorTitik, req.MotorBerat, req.MotorZona1, req.MotorZona2, req.MotorZona3,
 		req.MobilDimensi, req.MobilKm, req.MobilTitik, req.MobilBerat, req.MobilLumpsum,
 	)
 	if err != nil {
@@ -164,13 +164,13 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 
 	profileQuery := `
 	SELECT alamat_lengkap, pickup_name, pickup_lat, pickup_long,
-	       motor_dimensi, motor_km, motor_titik, motor_berat,
+	       motor_dimensi, motor_km, motor_titik, motor_berat, motor_zona1, motor_zona2, motor_zona3,
 	       mobil_dimensi, mobil_km, mobil_titik, mobil_berat, mobil_lumpsum
 	FROM mitra_profiles WHERE user_id = $1;`
 
 	err := h.DB.QueryRow(ctx, profileQuery, userID).Scan(
 		&profile.AlamatLengkap, &profile.PickupName, &profile.PickupLat, &profile.PickupLong,
-		&profile.MotorDimensi, &profile.MotorKm, &profile.MotorTitik, &profile.MotorBerat,
+		&profile.MotorDimensi, &profile.MotorKm, &profile.MotorTitik, &profile.MotorBerat, &profile.MotorZona1, &profile.MotorZona2, &profile.MotorZona3,
 		&profile.MobilDimensi, &profile.MobilKm, &profile.MobilTitik, &profile.MobilBerat, &profile.MobilLumpsum,
 	)
 
@@ -180,6 +180,10 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 		defMotorKm := 20000.00
 		defMotorTitik := 10000.00
 		defMotorBerat := 5000.00
+		defMotorZona1 := 10500.00
+		defMotorZona2 := 17500.00
+		defMotorZona3 := 24500.00
+
 		defMobilDimensi := 1500.00
 		defMobilKm := 25000.00
 		defMobilTitik := 12000.00
@@ -196,6 +200,7 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 				PickupLat:     -7.782889, PickupLong: 110.377042,
 				MotorDimensi: &defMotorDimensi, MotorKm: &defMotorKm,
 				MotorTitik: &defMotorTitik, MotorBerat: &defMotorBerat,
+				MotorZona1: &defMotorZona1, MotorZona2: &defMotorZona2, MotorZona3: &defMotorZona3,
 				MobilDimensi: &defMobilDimensi, MobilKm: &defMobilKm,
 				MobilTitik: &defMobilTitik, MobilBerat: &defMobilBerat,
 				MobilLumpsum: &defMobilLumpsum,

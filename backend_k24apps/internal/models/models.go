@@ -57,6 +57,7 @@ type Order struct {
 	CustomerPhone       string     `json:"customer_phone"`
 	MedicineSummary     string     `json:"medicine_summary"`
 	DeliveryFee         float64    `json:"delivery_fee"`
+	DriverFee           float64    `json:"driver_fee"`
 	DistanceKM          float64    `json:"distance_km"`
 	PickupPhotoUrl      string     `json:"pickup_photo_url"`
 	PickupNote          string     `json:"pickup_note"`
@@ -184,6 +185,9 @@ type CreateMitraRequest struct {
 	MotorKm      *float64 `json:"motor_km"`
 	MotorTitik   *float64 `json:"motor_titik"`
 	MotorBerat   *float64 `json:"motor_berat"`
+	MotorZona1   *float64 `json:"motor_zona1"`
+	MotorZona2   *float64 `json:"motor_zona2"`
+	MotorZona3   *float64 `json:"motor_zona3"`
 	
 	// Mobil Configuration
 	MobilDimensi *float64 `json:"mobil_dimensi"`
@@ -231,6 +235,9 @@ type MitraProfileResponse struct {
 	MotorKm      *float64 `json:"motor_km"`
 	MotorTitik   *float64 `json:"motor_titik"`
 	MotorBerat   *float64 `json:"motor_berat"`
+	MotorZona1   *float64 `json:"motor_zona1"`
+	MotorZona2   *float64 `json:"motor_zona2"`
+	MotorZona3   *float64 `json:"motor_zona3"`
 	
 	// Mobil Configuration
 	MobilDimensi *float64 `json:"mobil_dimensi"`
@@ -246,6 +253,7 @@ type Recipient struct {
 	AlamatLengkap string  `json:"alamat_lengkap"`
 	Latitude      float64 `json:"latitude"`
 	Longitude     float64 `json:"longitude"`
+	Zona          int     `json:"zona"`
 }
 
 type CalculateOrderRequest struct {
@@ -272,6 +280,9 @@ type CalculatedItemResult struct {
 	AlamatLengkap string  `json:"alamat_lengkap"`
 	JarakKm       float64 `json:"jarak_km"`
 	Price         float64 `json:"price"`
+	DriverFee     float64 `json:"driver_fee"`
+	Zona          int     `json:"zona,omitempty"`
+	RateLabel     string  `json:"rate_label,omitempty"`
 	Warning       string  `json:"warning,omitempty"`
 }
 
