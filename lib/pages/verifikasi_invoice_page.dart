@@ -252,14 +252,14 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         return '$inv: ${stat.toUpperCase()}$note';
       }).join('; ');
 
-      // Combined photos payload
-      final allPhotos = _facturePhotos.values.toList();
-      final mainPhoto = allPhotos.isNotEmpty ? allPhotos[0] : '';
+      // Combined photos payload for all invoices
+      final allPhotos = _facturePhotos.values.where((p) => p.trim().isNotEmpty).toList();
+      final combinedFacturePhoto = allPhotos.join(';');
 
       await ApiService.submitUnboxAndFacture(
         orderId: widget.order.id,
         checkedInvoices: checkedPayload,
-        facturePhoto: mainPhoto,
+        facturePhoto: combinedFacturePhoto,
         signaturePhoto: sig,
       );
 

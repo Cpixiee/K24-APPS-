@@ -230,7 +230,13 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
                   ...ordersList.expand((o) {
                     final photos = <Widget>[];
                     if (o.facturePhotoUrl.isNotEmpty) {
-                      photos.add(_buildPhotoPreview('Foto Bukti Faktur (${o.customerName} - ${o.orderNumber}):', o.facturePhotoUrl));
+                      final splitUrls = o.facturePhotoUrl.split(RegExp(r'[;,]')).where((u) => u.trim().isNotEmpty).toList();
+                      for (int imgIdx = 0; imgIdx < splitUrls.length; imgIdx++) {
+                        final label = splitUrls.length > 1
+                            ? 'Foto Bukti Faktur #${imgIdx + 1} (${o.customerName} - ${o.orderNumber}):'
+                            : 'Foto Bukti Faktur (${o.customerName} - ${o.orderNumber}):';
+                        photos.add(_buildPhotoPreview(label, splitUrls[imgIdx].trim()));
+                      }
                     }
                     if (o.pickupPhotoUrl.isNotEmpty) {
                       photos.add(_buildPhotoPreview('Foto Bukti Serah Terima (${o.customerName} - ${o.orderNumber}):', o.pickupPhotoUrl));
