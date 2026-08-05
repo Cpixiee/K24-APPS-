@@ -379,13 +379,18 @@ export default function ApotekerUnboxPage() {
 
             {/* Facture Photo uploaded by Driver if any */}
             {order.facture_photo_url && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <FileText className="h-4 w-4 text-indigo-600" />
-                  Foto Faktur Fisik Bertanda Tangan (Driver):
+                  Foto Faktur Fisik Bertanda Tangan ({order.facture_photo_url.split(/;|,/).filter(Boolean).length} Faktur):
                 </span>
-                <div className="rounded-2xl overflow-hidden border border-border bg-black/5 max-h-64 flex justify-center">
-                  <img src={order.facture_photo_url} alt="Foto Faktur Driver" className="object-contain max-h-64 w-full" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {order.facture_photo_url.split(/;|,/).filter(Boolean).map((imgUrl, imgIdx) => (
+                    <div key={imgIdx} className="rounded-2xl overflow-hidden border border-border bg-black/5 flex flex-col items-center p-2">
+                      <span className="text-[10px] font-bold text-muted-foreground mb-1">Foto Faktur #{imgIdx + 1}</span>
+                      <img src={imgUrl.trim()} alt={`Foto Faktur ${imgIdx + 1}`} className="object-contain max-h-56 w-full rounded-xl" />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

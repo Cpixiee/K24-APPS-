@@ -360,13 +360,77 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		return
 	}
 
-	// 4. Calculate sequential routing
+	// 4. Calculate sequential routing with Auto-Sorting by Zone Hierarchy (Zona 1 -> Zona 2 -> Zona 3 -> Non-Zona)
+	type orderSeqItem struct {
+		orderID int
+		zona    int
+		lat     float64
+		lng     float64
+	}
+
+	seqItems := []orderSeqItem{}
+	for _, oid := range req.Sequence {
+		o := ordersMap[oid]
+		var destLat, destLng float64
+		var zVal int
+		err := tx.QueryRow(ctx,
+			"SELECT latitude, longitude, COALESCE(zona, 99) FROM alamat_penerima WHERE nama_apotek = $1 AND alamat_lengkap = $2 LIMIT 1",
+			o.customerName, o.deliveryAddress,
+		).Scan(&destLat, &destLng, &zVal)
+		if err != nil {
+			destLat = originLat + (float64(oid%100) * 0.001)
+			destLng = originLong + (float64(oid%100) * 0.001)
+			zVal = 99
+		}
+		if zVal <= 0 {
+			zVal = 99
+		}
+		seqItems = append(seqItems, orderSeqItem{
+			orderID: oid,
+			zona:    zVal,
+			lat:     destLat,
+			lng:     destLng,
+		})
+	}
+
+	// Sort sequence by Zone Rank (1, 2, 3, 99) and nearest distance from origin
+	orderedSequence := []int{}
+	currLat, currLng := originLat, originLong
+	for _, zoneRank := range []int{1, 2, 3, 99} {
+		group := []orderSeqItem{}
+		for _, item := range seqItems {
+			if item.zona == zoneRank {
+				group = append(group, item)
+			}
+		}
+
+		remaining := make([]orderSeqItem, len(group))
+		copy(remaining, group)
+
+		for len(remaining) > 0 {
+			bestIdx := 0
+			bestDist := math.MaxFloat64
+			for idx, r := range remaining {
+				dist := haversineDist(currLat, currLng, r.lat, r.lng)
+				if dist < bestDist {
+					bestDist = dist
+					bestIdx = idx
+				}
+			}
+			chosen := remaining[bestIdx]
+			orderedSequence = append(orderedSequence, chosen.orderID)
+			currLat = chosen.lat
+			currLng = chosen.lng
+			remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+		}
+	}
+
 	var totalDistance float64
 	var totalArgo float64
 	lastLat := originLat
 	lastLng := originLong
 
-	for i, orderID := range req.Sequence {
+	for i, orderID := range orderedSequence {
 		o := ordersMap[orderID]
 
 		// Get destination coordinates from alamat_penerima
