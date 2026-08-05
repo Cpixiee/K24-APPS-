@@ -367,6 +367,22 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         ? _catatanController.text.trim()
         : (checkedPayload.contains('Tidak Sesuai') ? checkedPayload : 'Semua invoice sesuai & terverifikasi');
 
+    final targetId = widget.order.dispatchId.isNotEmpty
+        ? widget.order.dispatchId
+        : (widget.order.orderNumber.isNotEmpty ? widget.order.orderNumber : '${widget.order.id}');
+    final webUrl = 'http://103.236.140.19:9002/apoteker/unbox/$targetId';
+
+    final batchSummary = StringBuffer();
+    if (widget.batchStops.isNotEmpty) {
+      batchSummary.writeln('DAFTAR SELURUH ORDER BATCH (${widget.batchStops.length} APOTEK):');
+      for (int i = 0; i < widget.batchStops.length; i++) {
+        final stop = widget.batchStops[i];
+        batchSummary.writeln('${i + 1}. ${stop.pharmacyName} (${stop.orderNumber})');
+        batchSummary.writeln('   Invoice: ${stop.checkedInvoices.isNotEmpty ? stop.checkedInvoices : stop.medicineSummary}');
+      }
+      batchSummary.writeln('——————————————————————');
+    }
+
     final driverTag = _driverId != 0 ? '$_driverName (ID: $_driverId)' : _driverName;
 
     final message = '''K24 JAKARTA
@@ -380,13 +396,17 @@ ID driver: $driverTag
 Jam pickup: $pickupTimeStr
 Jam delivery: $timeStr
 ——————————————————————
-Daftar invoice:
+$batchSummary
+Daftar invoice ($apotekName):
 $invoiceListText
 Catatan: $catatan
 ——————————————————————
 Penerima:
 Nama: $recipientName
-No telp: $recipientPhone''';
+No telp: $recipientPhone
+——————————————————————
+🌐 LINK VERIFIKASI UNBOXING REAL-TIME (TAB VIEW):
+$webUrl''';
 
     // 1. First, attempt to share the Ningrat Logo Image WITH the report text as caption via Share.shareXFiles
     try {

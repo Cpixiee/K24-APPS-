@@ -1774,10 +1774,8 @@ func (h *AdminHandler) CompletePODOrder(c *gin.Context) {
 		     pod_signature_photo_url = COALESCE(NULLIF($1, ''), pod_signature_photo_url), 
 		     facture_photo_url = COALESCE(NULLIF($2, ''), facture_photo_url), 
 		     completed_at = $3 
-		 WHERE id = $4
-		    OR (dispatch_id != '' AND dispatch_id = $5)
-		    OR (parent_order_number != '' AND parent_order_number = $6)`,
-		req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, orderID, dispatchID, parentOrderNum,
+		 WHERE id::text = $4 OR order_number = $4`,
+		req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, orderID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyelesaikan pengembalian POD: " + err.Error()})
