@@ -40,20 +40,19 @@ class ApiService {
     await _autoDiscoverServer();
   }
 
-  /// Connect to Localhost (10.0.2.2:8087 / 127.0.0.1:8087) first, then LAN, then Public Server
+  /// Connect to Public Server first, then local fallbacks
   static Future<void> _autoDiscoverServer() async {
     final localUrls = [
+      _publicServerUrl,
       'http://10.0.2.2:8087/api',
       'http://127.0.0.1:8087/api',
-      'http://192.168.18.228:8087/api',
-      _publicServerUrl,
     ];
 
     for (final url in localUrls) {
       try {
         final response = await http
             .get(Uri.parse('$url/health'))
-            .timeout(const Duration(milliseconds: 1500));
+            .timeout(const Duration(milliseconds: 2000));
         if (response.statusCode == 200) {
           _customBaseUrl = url;
           final prefs = await SharedPreferences.getInstance();
@@ -64,7 +63,7 @@ class ApiService {
       } catch (_) {}
     }
 
-    _customBaseUrl = 'http://10.0.2.2:8087/api';
+    _customBaseUrl = _publicServerUrl;
   }
 
   static Future<void> fetchServerLanIp() async {
@@ -218,7 +217,7 @@ class ApiService {
   }
 
   // HTTP Request Helper with automatic known server IP fallback & Dev Inspector Logging
-  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 4)}) async {
+  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 40)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'POST',
       url: url,
@@ -242,7 +241,7 @@ class ApiService {
     );
   }
 
-  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 4)}) async {
+  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 40)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'GET',
       url: url,
@@ -265,6 +264,29 @@ class ApiService {
     );
   }
 
+  static Future<http.Response> _putWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 40)}) async {
+    return HttpDebugLogger.wrapRequest(
+      method: 'PUT',
+      url: url,
+      headers: headers,
+      body: body,
+      requestFn: () async {
+        try {
+          return await http.put(url, headers: headers, body: body).timeout(timeout);
+        } catch (e) {
+          if (!kIsWeb && !url.host.contains(_knownServerIp)) {
+            final fallbackUrl = Uri.parse(url.toString().replaceFirst(RegExp(r'http://[^/]+'), 'http://$_knownServerIp:$_serverPort'));
+            debugPrint('[API Fallback] Retrying PUT on known server IP: $fallbackUrl');
+            _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('custom_base_url', _customBaseUrl!);
+            return await http.put(fallbackUrl, headers: headers, body: body).timeout(timeout);
+          }
+          rethrow;
+        }
+      },
+    );
+  }
 
   // Register a new driver via Email, Password, Vehicle Type, and Documents
   static Future<void> register({
