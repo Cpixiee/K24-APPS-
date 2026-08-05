@@ -230,7 +230,19 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
                   ...ordersList.expand((o) {
                     final photos = <Widget>[];
                     if (o.facturePhotoUrl.isNotEmpty) {
-                      final splitUrls = o.facturePhotoUrl.split(RegExp(r'[;,]')).where((u) => u.trim().isNotEmpty).toList();
+                      List<String> splitUrls = [];
+                      if (o.facturePhotoUrl.contains('|||')) {
+                        splitUrls = o.facturePhotoUrl.split('|||');
+                      } else if (o.facturePhotoUrl.contains('data:image')) {
+                        splitUrls = o.facturePhotoUrl.split(RegExp(r';(?=data:image|http)'));
+                      } else if (o.facturePhotoUrl.contains(';')) {
+                        splitUrls = o.facturePhotoUrl.split(';');
+                      } else {
+                        splitUrls = [o.facturePhotoUrl];
+                      }
+
+                      splitUrls = splitUrls.where((u) => u.trim().isNotEmpty).toList();
+
                       for (int imgIdx = 0; imgIdx < splitUrls.length; imgIdx++) {
                         final label = splitUrls.length > 1
                             ? 'Foto Bukti Faktur #${imgIdx + 1} (${o.customerName} - ${o.orderNumber}):'
@@ -288,6 +300,34 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
 
   Widget _buildPhotoPreview(String title, String photoUrl) {
     if (photoUrl.isEmpty) return const SizedBox.shrink();
+
+    Widget imageWidget;
+    try {
+      if (photoUrl.startsWith('data:image')) {
+        final parts = photoUrl.split(',');
+        if (parts.length > 1) {
+          final bytes = base64Decode(parts[1]);
+          imageWidget = Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
+          );
+        } else {
+          imageWidget = const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey));
+        }
+      } else {
+        imageWidget = Image.network(
+          photoUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
+        );
+      }
+    } catch (e) {
+      imageWidget = const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -305,20 +345,7 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: photoUrl.startsWith('data:image')
-                ? Image.memory(
-                    base64Decode(photoUrl.split(',')[1]),
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                  )
-                : Image.network(
-                    photoUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    errorBuilder: (context, error, stackTrace) => const Center(
-                      child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey),
-                    ),
-                  ),
+            child: imageWidget,
           ),
         ),
         gapH12,
