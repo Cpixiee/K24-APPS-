@@ -91,6 +91,7 @@ type resolvedBulkItem struct {
 	item      models.BulkOrderItemInput
 	latitude  float64
 	longitude float64
+	zona      int
 }
 
 func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolvedBulkItem) []resolvedBulkItem {
@@ -98,31 +99,49 @@ func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolved
 		return items
 	}
 
-	remaining := make([]resolvedBulkItem, len(items))
-	copy(remaining, items)
+	// Group items by zone hierarchy (1: Zona 1, 2: Zona 2, 3: Zona 3, 99: Non-Zona)
+	groups := make(map[int][]resolvedBulkItem)
+	for _, item := range items {
+		z := item.zona
+		if z <= 0 {
+			z = 99
+		}
+		groups[z] = append(groups[z], item)
+	}
 
+	orderedZones := []int{1, 2, 3, 99}
 	sorted := make([]resolvedBulkItem, 0, len(items))
 	currLat, currLng := originLat, originLng
 
-	for len(remaining) > 0 {
-		bestIdx := 0
-		bestDist := math.MaxFloat64
-
-		for i, r := range remaining {
-			dist := haversineDist(currLat, currLng, r.latitude, r.longitude)
-			if dist < bestDist {
-				bestDist = dist
-				bestIdx = i
-			}
+	for _, z := range orderedZones {
+		groupItems, exists := groups[z]
+		if !exists || len(groupItems) == 0 {
+			continue
 		}
 
-		chosen := remaining[bestIdx]
-		sorted = append(sorted, chosen)
+		remaining := make([]resolvedBulkItem, len(groupItems))
+		copy(remaining, groupItems)
 
-		currLat = chosen.latitude
-		currLng = chosen.longitude
+		for len(remaining) > 0 {
+			bestIdx := 0
+			bestDist := math.MaxFloat64
 
-		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+			for i, r := range remaining {
+				dist := haversineDist(currLat, currLng, r.latitude, r.longitude)
+				if dist < bestDist {
+					bestDist = dist
+					bestIdx = i
+				}
+			}
+
+			chosen := remaining[bestIdx]
+			sorted = append(sorted, chosen)
+
+			currLat = chosen.latitude
+			currLng = chosen.longitude
+
+			remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+		}
 	}
 
 	return sorted
@@ -161,14 +180,16 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		&fullRates.MotorDimensi, &fullRates.MotorKm, &fullRates.MotorTitik, &fullRates.MotorBerat,
 		&fullRates.MobilDimensi, &fullRates.MobilKm, &fullRates.MobilTitik, &fullRates.MobilBerat, &fullRates.MobilLumpsum)
 
-	// Resolve lat/lng for all items first
+	// Resolve lat/lng and zone for all items first
 	resolved := []resolvedBulkItem{}
 	for _, item := range req.Items {
 		var destLat, destLng float64
+		var zonaVal int
 		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
 		if rec != nil {
 			destLat = rec.Latitude
 			destLng = rec.Longitude
+			zonaVal = rec.Zona
 		} else {
 			var geocodeErr error
 			destLat, destLng, geocodeErr = geocodeAddress(item.AlamatLengkap, originLat, originLong)
@@ -183,13 +204,15 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 				AlamatLengkap: item.AlamatLengkap,
 				KubikAktual:   item.KubikAktual,
 				BeratAktual:   item.BeratAktual,
+				Invoices:      item.Invoices,
 			},
 			latitude:  destLat,
 			longitude: destLng,
+			zona:      zonaVal,
 		})
 	}
 
-	// Sort items by nearest neighbor route sequence
+	// Sort items by Zone Hierarchy (Zona 1 -> Zona 2 -> Zona 3 -> Non-Zona) and nearest neighbor
 	sorted := sortBulkItemsNearestNeighbor(originLat, originLong, resolved)
 
 	response := models.CalculateOrderResponse{
@@ -314,14 +337,16 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 		&fullRates.MotorDimensi, &fullRates.MotorKm, &fullRates.MotorTitik, &fullRates.MotorBerat,
 		&fullRates.MobilDimensi, &fullRates.MobilKm, &fullRates.MobilTitik, &fullRates.MobilBerat, &fullRates.MobilLumpsum)
 
-	// Resolve lat/lng for all items first
+	// Resolve lat/lng and zone for all items first
 	resolved := []resolvedBulkItem{}
 	for _, item := range req.Items {
 		var finalLat, finalLng float64
+		var zonaVal int
 		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
 		if rec != nil {
 			finalLat = rec.Latitude
 			finalLng = rec.Longitude
+			zonaVal = rec.Zona
 		} else {
 			finalLat = item.Latitude
 			finalLng = item.Longitude
@@ -335,6 +360,7 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 			item:      item,
 			latitude:  finalLat,
 			longitude: finalLng,
+			zona:      zonaVal,
 		})
 	}
 
@@ -1779,7 +1805,7 @@ func (h *AdminHandler) CompletePODOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Pengembalian POD berhasil diselesaikan (COMPLETED)"})
 }
 
-// GetPublicOrderDetail fetches order stop details for the pharmacist
+// GetPublicOrderDetail fetches order stop details for the pharmacist including all sibling orders for tabbed view
 func (h *AdminHandler) GetPublicOrderDetail(c *gin.Context) {
 	orderID := c.Param("id")
 	ctx := context.Background()
@@ -1792,14 +1818,14 @@ func (h *AdminHandler) GetPublicOrderDetail(c *gin.Context) {
 		        COALESCE(parent_order_number, ''), COALESCE(dispatch_id, ''),
 		        COALESCE(unboxing_option, ''), COALESCE(checked_invoices, ''),
 		        COALESCE(extra_items_note, ''), COALESCE(extra_items_photo_url, ''),
-		        COALESCE(facture_photo_url, '')
-		 FROM orders WHERE id = $1`, orderID,
+		        COALESCE(facture_photo_url, ''), COALESCE(pod_signature_photo_url, '')
+		 FROM orders WHERE id::text = $1 OR order_number = $1 OR dispatch_id = $1 LIMIT 1`, orderID,
 	).Scan(
 		&o.ID, &o.OrderNumber, &o.Status, &o.PharmacyName, &o.PharmacyAddress, &o.DeliveryAddress,
 		&o.CustomerName, &o.CustomerPhone, &medicineSummary, &o.DeliveryFee, &o.CreatedAt,
 		&o.ParentOrderNumber, &o.DispatchID,
 		&o.UnboxingOption, &o.CheckedInvoices, &o.ExtraItemsNote, &o.ExtraItemsPhotoUrl,
-		&o.FacturePhotoUrl,
+		&o.FacturePhotoUrl, &o.PODSignaturePhotoUrl,
 	)
 
 	if err == pgx.ErrNoRows {
@@ -1810,17 +1836,87 @@ func (h *AdminHandler) GetPublicOrderDetail(c *gin.Context) {
 		return
 	}
 
-	// Parse invoices
+	// Parse main order invoices
 	var invoices []string
 	if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
 		invoices = strings.Split(parts[1], ", ")
 	}
 
+	// Fetch all sibling orders in this dispatch batch if dispatch_id or parent_order_number is present
+	type SiblingOrderInfo struct {
+		ID                   int      `json:"id"`
+		OrderNumber          string   `json:"order_number"`
+		PharmacyName         string   `json:"pharmacy_name"`
+		DeliveryAddress      string   `json:"delivery_address"`
+		CustomerName         string   `json:"customer_name"`
+		Status               string   `json:"status"`
+		UnboxingOption       string   `json:"unboxing_option"`
+		CheckedInvoices      string   `json:"checked_invoices"`
+		Invoices             []string `json:"invoices"`
+		FacturePhotoUrl      string   `json:"facture_photo_url"`
+		PodSignaturePhotoUrl string   `json:"pod_signature_photo_url"`
+		ExtraItemsNote       string   `json:"extra_items_note"`
+		ExtraItemsPhotoUrl   string   `json:"extra_items_photo_url"`
+	}
+
+	allOrders := []SiblingOrderInfo{}
+
+	querySiblings := `
+		SELECT id, order_number, pharmacy_name, delivery_address, customer_name, status,
+		       COALESCE(unboxing_option, ''), COALESCE(checked_invoices, ''),
+		       medicine_summary, COALESCE(facture_photo_url, ''),
+		       COALESCE(pod_signature_photo_url, ''), COALESCE(extra_items_note, ''),
+		       COALESCE(extra_items_photo_url, '')
+		FROM orders 
+		WHERE (dispatch_id != '' AND dispatch_id = $1)
+		   OR (parent_order_number != '' AND parent_order_number = $2)
+		   OR id = $3
+		ORDER BY id ASC`
+
+	rows, err := h.DB.Query(ctx, querySiblings, o.DispatchID, o.ParentOrderNumber, o.ID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var sib SiblingOrderInfo
+			var medSum string
+			if err := rows.Scan(
+				&sib.ID, &sib.OrderNumber, &sib.PharmacyName, &sib.DeliveryAddress, &sib.CustomerName, &sib.Status,
+				&sib.UnboxingOption, &sib.CheckedInvoices, &medSum, &sib.FacturePhotoUrl,
+				&sib.PodSignaturePhotoUrl, &sib.ExtraItemsNote, &sib.ExtraItemsPhotoUrl,
+			); err == nil {
+				if parts := strings.SplitN(medSum, "Invoices: ", 2); len(parts) == 2 {
+					sib.Invoices = strings.Split(parts[1], ", ")
+				}
+				allOrders = append(allOrders, sib)
+			}
+		}
+	}
+
+	// Fallback if no siblings returned
+	if len(allOrders) == 0 {
+		allOrders = append(allOrders, SiblingOrderInfo{
+			ID:                   o.ID,
+			OrderNumber:          o.OrderNumber,
+			PharmacyName:         o.PharmacyName,
+			DeliveryAddress:      o.DeliveryAddress,
+			CustomerName:         o.CustomerName,
+			Status:               o.Status,
+			UnboxingOption:       o.UnboxingOption,
+			CheckedInvoices:      o.CheckedInvoices,
+			Invoices:             invoices,
+			FacturePhotoUrl:      o.FacturePhotoUrl,
+			PodSignaturePhotoUrl: o.PODSignaturePhotoUrl,
+			ExtraItemsNote:       o.ExtraItemsNote,
+			ExtraItemsPhotoUrl:   o.ExtraItemsPhotoUrl,
+		})
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Status: "success",
 		Data: map[string]interface{}{
-			"order":    o,
-			"invoices": invoices,
+			"order":      o,
+			"invoices":   invoices,
+			"all_orders": allOrders,
 		},
 	})
 }

@@ -268,6 +268,7 @@ type CalculateOrderItem struct {
 	KubikAktual   *float64 `json:"kubik_aktual"`
 	BeratAktual   *float64 `json:"berat_aktual"`
 	JumlahInvoice int      `json:"jumlah_invoice"`
+	Invoices      []string `json:"invoices"`
 }
 
 type CalculateOrderResponse struct {

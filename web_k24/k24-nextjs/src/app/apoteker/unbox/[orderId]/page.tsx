@@ -31,6 +31,8 @@ export default function ApotekerUnboxPage() {
 
   const [order, setOrder] = useState<Order | null>(null)
   const [invoices, setInvoices] = useState<string[]>([])
+  const [allOrders, setAllOrders] = useState<any[]>([])
+  const [activeTabIndex, setActiveTabIndex] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, 'done' | 'missing'>>({})
   const [missingNotes, setMissingNotes] = useState<Record<string, string>>({})
@@ -63,6 +65,34 @@ export default function ApotekerUnboxPage() {
     reader.readAsDataURL(file)
   }
 
+  const selectOrderTab = (idx: number, siblingList?: any[]) => {
+    const list = siblingList || allOrders
+    if (!list || list.length === 0 || !list[idx]) return
+    setActiveTabIndex(idx)
+    const current = list[idx]
+    setOrder({
+      id: current.id,
+      order_number: current.order_number,
+      status: current.status,
+      pharmacy_name: current.pharmacy_name,
+      pharmacy_address: current.delivery_address,
+      delivery_address: current.delivery_address,
+      customer_name: current.customer_name,
+      medicine_summary: current.invoices?.join(', ') || '',
+      delivery_fee: 0,
+      unboxing_option: current.unboxing_option,
+      checked_invoices: current.checked_invoices,
+      extra_items_note: current.extra_items_note,
+      extra_items_photo_url: current.extra_items_photo_url,
+      facture_photo_url: current.facture_photo_url,
+    })
+    const invs = current.invoices || []
+    setInvoices(invs)
+    const statuses: Record<string, 'done' | 'missing'> = {}
+    invs.forEach((inv: string) => { statuses[inv] = 'done' })
+    setInvoiceStatuses(statuses)
+  }
+
   const fetchOrderDetails = useCallback(async () => {
     setLoading(true)
     setErrorMsg(null)
@@ -75,6 +105,16 @@ export default function ApotekerUnboxPage() {
       const data = res.data.data
       setOrder(data.order)
       setInvoices(data.invoices || [])
+      const siblings = data.all_orders || []
+      setAllOrders(siblings)
+
+      // Find current order index in siblings
+      let foundIdx = 0
+      if (siblings.length > 0) {
+        const match = siblings.findIndex((s: any) => s.id === data.order.id || s.order_number === data.order.order_number)
+        if (match >= 0) foundIdx = match
+      }
+      setActiveTabIndex(foundIdx)
       
       // Initialize checklist statuses
       const statuses: Record<string, 'done' | 'missing'> = {}
@@ -174,14 +214,25 @@ export default function ApotekerUnboxPage() {
         return `${inv}: ${stat.toUpperCase()}${note}`
       }).join('; ')
 
-      await adminAPI.unboxOrder(orderId, {
+      const targetId = order?.id ? String(order.id) : orderId
+      await adminAPI.unboxOrder(targetId, {
         checked_invoices: checkedPayload,
         extra_items_note: hasExtraItems ? extraItemsNote : '',
         extra_items_photo_url: proofPhoto || (hasExtraItems ? extraItemsPhoto : ''),
       })
 
-      toast.success('Unboxing berhasil disubmit!')
-      setSuccessState('direct')
+      if (allOrders.length > 1 && activeTabIndex < allOrders.length - 1) {
+        toast.success(`Unboxing Order ${activeTabIndex + 1} (${order?.pharmacy_name}) selesai! Melanjutkan ke Order ${activeTabIndex + 2}...`)
+        const nextIdx = activeTabIndex + 1
+        selectOrderTab(nextIdx)
+        setProofPhoto('')
+        setHasExtraItems(false)
+        setExtraItemsNote('')
+        setExtraItemsPhoto('')
+      } else {
+        toast.success('Unboxing seluruh order dalam pengiriman berhasil disubmit!')
+        setSuccessState('direct')
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Gagal mengirim hasil unboxing.')
     } finally {
@@ -353,7 +404,9 @@ export default function ApotekerUnboxPage() {
         </div>
       </div>
     )
-  }  return (
+  }
+
+  return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-foreground py-10 px-4">
       <div className="max-w-xl mx-auto space-y-6">
         
@@ -435,6 +488,40 @@ export default function ApotekerUnboxPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Multi-Order Tab System */}
+        {allOrders && allOrders.length > 1 && (
+          <div className="bg-card border border-border rounded-2xl p-3 shadow-sm space-y-2">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground px-1 flex items-center justify-between">
+              <span>Daftar Order Pengantaran ({allOrders.length} Apotek)</span>
+              <span className="text-blue-600 font-bold flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" /> Real-Time Sync
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {allOrders.map((ord, idx) => (
+                <button
+                  key={ord.id}
+                  type="button"
+                  onClick={() => selectOrderTab(idx)}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer border",
+                    activeTabIndex === idx
+                      ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20"
+                      : "bg-muted/50 text-foreground border-border hover:bg-accent"
+                  )}
+                >
+                  <span>Order {idx + 1}: {ord.pharmacy_name}</span>
+                  {ord.status === 'COMPLETED' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{ord.invoices?.length || 1} Inv</span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
         )}
