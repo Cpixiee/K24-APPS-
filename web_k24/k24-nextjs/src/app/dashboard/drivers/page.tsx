@@ -65,9 +65,12 @@ function DriversPageContent() {
     setLoading(true)
     try {
       const res = await adminAPI.getDrivers()
-      setDrivers(res.data.data || res.data || [])
-    } catch {
-      toast.error('Gagal memuat data driver.')
+      const rawList = res.data?.data ?? res.data ?? []
+      const list = Array.isArray(rawList) ? rawList : []
+      setDrivers(list)
+    } catch (err: any) {
+      console.error('[fetchDrivers Error]:', err)
+      toast.error(err.response?.data?.message || err.message || 'Gagal memuat data driver.')
     } finally {
       setLoading(false)
     }
@@ -114,15 +117,16 @@ function DriversPageContent() {
   }
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(drivers)) return []
     return drivers.filter((d) => {
-      const q = search.toLowerCase()
+      const q = (search || '').toLowerCase()
       const matchesSearch =
-        d.name?.toLowerCase().includes(q) ||
-        d.username?.toLowerCase().includes(q) ||
-        d.email?.toLowerCase().includes(q) ||
-        d.plate_number?.toLowerCase().includes(q)
+        (d.name || '').toLowerCase().includes(q) ||
+        (d.username || '').toLowerCase().includes(q) ||
+        (d.email || '').toLowerCase().includes(q) ||
+        (d.plate_number || '').toLowerCase().includes(q)
       
-      const matchesApproval = activeTab === 'approved' ? d.is_approved : !d.is_approved
+      const matchesApproval = activeTab === 'approved' ? Boolean(d.is_approved) : !d.is_approved
       return matchesSearch && matchesApproval
     })
   }, [drivers, search, activeTab])
