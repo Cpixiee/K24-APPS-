@@ -105,6 +105,7 @@ func main() {
 		api.POST("/public/orders/:id/start-unbox", adminHandler.StartUnboxOrder)
 		api.POST("/public/orders/:id/approve-pod", adminHandler.PublicApprovePOD)
 		api.POST("/public/orders/:id/pod-complete", adminHandler.CompletePODOrder)
+		api.GET("/public/dispatch/:dispatch_id/live-track", adminHandler.GetDispatchLiveTracking)
 
 		// Protected driver routes
 		driver := api.Group("/driver")
@@ -112,6 +113,7 @@ func main() {
 		{
 			driver.GET("/dashboard", dashboardHandler.GetDashboard)
 			driver.POST("/toggle-active", dashboardHandler.ToggleActive)
+			driver.POST("/location", dashboardHandler.UpdateDriverLocation)
 			driver.POST("/orders/:id/complete", dashboardHandler.CompleteOrder)
 			driver.POST("/orders/:id/pickup", adminHandler.UpdateOrderPickup)
 			driver.POST("/orders/:id/reject", adminHandler.UpdateOrderReject)
@@ -174,6 +176,7 @@ func main() {
 			admin.GET("/dispatch/orders", adminHandler.GetPendingDispatchOrders)
 			admin.GET("/dispatch/drivers", adminHandler.GetDispatchDrivers)
 			admin.POST("/dispatch", adminHandler.CreateDispatchGroup)
+			admin.GET("/dispatch/:dispatch_id/live-track", adminHandler.GetDispatchLiveTracking)
 		}
 	}
 

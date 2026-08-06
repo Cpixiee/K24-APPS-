@@ -780,4 +780,25 @@ class ApiService {
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     }
   }
+
+  /// Update Driver Live Location (POST /driver/location)
+  static Future<bool> updateDriverLocation(double latitude, double longitude) async {
+    final url = Uri.parse('$baseUrl/driver/location');
+    final headers = await _getHeaders(authRequired: true);
+
+    try {
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'latitude': latitude,
+          'longitude': longitude,
+        }),
+      ).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[Location] Location update swallowed gracefully: $e');
+      return false;
+    }
+  }
 }

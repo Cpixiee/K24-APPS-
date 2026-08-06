@@ -351,3 +351,51 @@ type CreateDispatchGroupRequest struct {
 	Sequence []int `json:"sequence" binding:"required,min=1"`
 }
 
+// DriverLocationUpdateRequest payload sent by Flutter mobile app
+type DriverLocationUpdateRequest struct {
+	Latitude  float64 `json:"latitude" binding:"required"`
+	Longitude float64 `json:"longitude" binding:"required"`
+}
+
+// LiveTrackingDriverState current driver location & profile info
+type LiveTrackingDriverState struct {
+	ID                 int       `json:"id"`
+	Name               string    `json:"name"`
+	Phone              string    `json:"phone"`
+	PlateNumber        string    `json:"plate_number"`
+	VehicleType        string    `json:"vehicle_type"`
+	IsActive           bool      `json:"is_active"`
+	CurrentLat         float64   `json:"current_lat"`
+	CurrentLng         float64   `json:"current_lng"`
+	LastLocationUpdate time.Time `json:"last_location_update"`
+	LastUpdatedSecAgo  int       `json:"last_updated_seconds_ago"`
+}
+
+// LiveTrackingStop sequential stop details
+type LiveTrackingStop struct {
+	OrderID         int      `json:"order_id"`
+	OrderNumber     string   `json:"order_number"`
+	SequenceNumber  int      `json:"sequence_number"`
+	CustomerName    string   `json:"customer_name"`
+	CustomerPhone   string   `json:"customer_phone"`
+	DeliveryAddress string   `json:"delivery_address"`
+	Lat             float64  `json:"lat"`
+	Lng             float64  `json:"lng"`
+	Status          string   `json:"status"` // 'DELIVERING', 'COMPLETED', 'PENDING'
+	Invoices        []string `json:"invoices"`
+}
+
+// LiveTrackingResponse response for live tracking page
+type LiveTrackingResponse struct {
+	DispatchNumber  string                  `json:"dispatch_number"`
+	Status          string                  `json:"status"`
+	TotalDistance   float64                 `json:"total_distance_km"`
+	TotalArgo       float64                 `json:"total_argo"`
+	Driver          LiveTrackingDriverState `json:"driver"`
+	PharmacyName    string                  `json:"pharmacy_name"`
+	PharmacyAddress string                  `json:"pharmacy_address"`
+	PharmacyLat     float64                 `json:"pharmacy_lat"`
+	PharmacyLng     float64                 `json:"pharmacy_lng"`
+	Stops           []LiveTrackingStop      `json:"stops"`
+}
+

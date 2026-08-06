@@ -65,9 +65,11 @@ export const adminAPI = {
   getPendingDispatchOrders: () => apiClient.get('/admin/dispatch/orders'),
   getDispatchDrivers: (vehicleType: string) => apiClient.get(`/admin/dispatch/drivers?vehicle_type=${vehicleType}`),
   createDispatchGroup: (data: unknown) => apiClient.post('/admin/dispatch', data),
+  getDispatchLiveTracking: (dispatchId: string | number) => apiClient.get(`/admin/dispatch/${dispatchId}/live-track`),
   
-  // Public Pharmacist workflows
+  // Public Pharmacist & Client workflows
   getPublicOrderDetail: (id: string | number) => apiClient.get(`/public/orders/${id}`),
+  getPublicDispatchLiveTracking: (dispatchId: string | number) => apiClient.get(`/public/dispatch/${dispatchId}/live-track`),
   startUnboxOrder: (id: string | number) => apiClient.post(`/public/orders/${id}/start-unbox`),
   unboxOrder: (id: string | number, data: { checked_invoices: string; extra_items_note?: string; extra_items_photo_url?: string }) =>
     apiClient.post(`/public/orders/${id}/unbox`, data),
