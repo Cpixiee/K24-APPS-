@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
@@ -25,13 +25,16 @@ interface Driver {
 }
 
 function DriversPageContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
 
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [activeTab, setActiveTab] = useState<'approved' | 'unapproved'>('approved')
+  const [activeTab, setActiveTab] = useState<'approved' | 'unapproved'>(
+    tabParam === 'unapproved' ? 'unapproved' : 'approved'
+  )
 
   useEffect(() => {
     if (tabParam === 'unapproved') {
@@ -40,6 +43,11 @@ function DriversPageContent() {
       setActiveTab('approved')
     }
   }, [tabParam])
+
+  const handleTabChange = (tab: 'approved' | 'unapproved') => {
+    setActiveTab(tab)
+    router.replace(`/dashboard/drivers?tab=${tab}`, { scroll: false })
+  }
   const [documentModal, setDocumentModal] = useState<{
     isOpen: boolean
     title: string
@@ -266,7 +274,7 @@ function DriversPageContent() {
         {/* Tab Switching */}
         <div className="flex rounded-xl bg-muted/80 p-1 border border-border shrink-0 self-start">
           <button
-            onClick={() => setActiveTab('approved')}
+            onClick={() => handleTabChange('approved')}
             className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
               activeTab === 'approved'
                 ? 'bg-background text-foreground shadow-sm'
@@ -276,7 +284,7 @@ function DriversPageContent() {
             Driver Aktif ({drivers.filter(d => d.is_approved).length})
           </button>
           <button
-            onClick={() => setActiveTab('unapproved')}
+            onClick={() => handleTabChange('unapproved')}
             className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
               activeTab === 'unapproved'
                 ? 'bg-background text-foreground shadow-sm'

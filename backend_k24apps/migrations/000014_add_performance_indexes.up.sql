@@ -18,3 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_route_cache_dest ON route_cache (dest_lat, dest_l
 -- 5. Composite index for notifications user/driver lookup ordered by creation time
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_driver_created ON notifications (driver_id, created_at DESC);
+
+-- 6. Indexes for users role & driver profiles approval status
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_driver_profiles_approved ON driver_profiles(user_id, is_approved);

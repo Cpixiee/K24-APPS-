@@ -53,6 +53,7 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
       method: request.method,
       headers,
       body,
+      signal: AbortSignal.timeout(15000),
       // For Node environment to allow body streams properly
       duplex: body ? 'half' : undefined,
     } as any)
