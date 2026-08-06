@@ -1,11 +1,7 @@
 -- Migration 000014: Performance Optimization Indexes
 -- Adds composite indexes to eliminate full table scans on dashboard, dispatch, address lookup, and notification queries
 
--- 1. Deduplicate alamat_penerima table & create composite index for (nama_apotek, alamat_lengkap)
-DELETE FROM alamat_penerima a 
-USING alamat_penerima b 
-WHERE a.id > b.id AND a.nama_apotek = b.nama_apotek AND a.alamat_lengkap = b.alamat_lengkap;
-
+-- 1. Composite index for (nama_apotek, alamat_lengkap)
 CREATE INDEX IF NOT EXISTS idx_alamat_penerima_lookup ON alamat_penerima (nama_apotek, alamat_lengkap);
 
 -- 2. Composite index for orders matching customer & delivery address
