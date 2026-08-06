@@ -101,9 +101,23 @@ func (h *AdminHandler) GetDispatchLiveTracking(c *gin.Context) {
 		return
 	}
 
+	// Always calculate real total argo & distance sum from orders table
+	var sumArgo, sumDistance float64
+	_ = h.DB.QueryRow(ctx, `
+		SELECT COALESCE(SUM(delivery_fee), 0.0), COALESCE(SUM(distance_km), 0.0)
+		FROM orders
+		WHERE dispatch_id = $1 OR parent_order_number = $1`, dispatchID,
+	).Scan(&sumArgo, &sumDistance)
+
 	resp.Status = status
-	resp.TotalDistance = totalDistance
-	resp.TotalArgo = totalArgo
+	resp.TotalDistance = sumDistance
+	if resp.TotalDistance == 0 {
+		resp.TotalDistance = totalDistance
+	}
+	resp.TotalArgo = sumArgo
+	if resp.TotalArgo == 0 {
+		resp.TotalArgo = totalArgo
+	}
 
 	// 2. Fetch Driver Profile & Live Location
 	var driverLastUpdate time.Time

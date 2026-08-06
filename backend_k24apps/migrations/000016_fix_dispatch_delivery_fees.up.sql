@@ -14,3 +14,18 @@ SET delivery_fee = CASE
     ELSE delivery_fee
 END
 WHERE driver_fee > 0 AND (delivery_fee = 15000 OR delivery_fee = 0 OR (driver_fee > delivery_fee));
+
+-- Sync total_argo in dispatch_groups table with calculated orders delivery_fee sum
+UPDATE dispatch_groups dg
+SET total_argo = sub.sum_fee,
+    total_distance_km = sub.sum_dist
+FROM (
+    SELECT dispatch_id, 
+           COALESCE(SUM(delivery_fee), 0.0) as sum_fee,
+           COALESCE(SUM(distance_km), 0.0) as sum_dist
+    FROM orders
+    WHERE dispatch_id IS NOT NULL AND dispatch_id != ''
+    GROUP BY dispatch_id
+) sub
+WHERE dg.dispatch_number = sub.dispatch_id;
+
