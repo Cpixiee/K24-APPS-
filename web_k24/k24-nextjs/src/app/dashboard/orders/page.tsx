@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
-import { Search, ArrowLeft, FileText, Truck, CheckCircle, AlertCircle, Activity, MapPin, User, Compass, CreditCard, Phone, Download, Printer, Map, Calendar, Clock, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, ArrowLeft, FileText, Truck, CheckCircle, AlertCircle, Activity, MapPin, User, Compass, CreditCard, Phone, Download, Printer, Map, Calendar, Clock, MoreVertical, ChevronLeft, ChevronRight, Navigation } from 'lucide-react'
 
 // Matches backend OrderSummary struct from admin_orders.go GetOrders
 interface OrderSummary {
@@ -766,6 +767,14 @@ export default function OrdersPage() {
 
                 {/* Action buttons row */}
                 <div className="space-y-3">
+                  {orderDetail.dispatch_id && (
+                    <Link
+                      href={`/dashboard/dispatch/${orderDetail.dispatch_id}/tracking`}
+                      className="flex items-center justify-center gap-2 h-11 w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition-all"
+                    >
+                      <Navigation className="h-4 w-4" /> Lihat Live Tracking Kurir (Peta Realtime) 🛰️
+                    </Link>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <button className="flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors font-semibold text-xs bg-card">
                       <Download className="h-4 w-4" /> Download Invoice

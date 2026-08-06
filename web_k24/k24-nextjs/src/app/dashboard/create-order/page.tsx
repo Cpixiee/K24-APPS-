@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, Search, Loader2, CheckCircle, HelpCircle, X, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, Search, Loader2, CheckCircle, HelpCircle, X, Check, Save, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import * as XLSX from 'xlsx'
+
+const DRAFT_KEY = 'k24_create_order_draft_v1'
 
 const INITIAL_ROW = () => ({
   id: Date.now() + Math.random(),
@@ -49,6 +51,57 @@ export default function CreateOrderPage() {
   const [preview, setPreview] = useState<{ items: PreviewItem[]; total_price: number } | null>(null)
   const [invoiceInput, setInvoiceInput] = useState<Record<number, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false)
+
+  // Restore draft on initial load
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.rows && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
+          const hasContent = parsed.rows.some((r: any) => r.nama_apotek || r.alamat_lengkap)
+          if (hasContent) {
+            setRows(parsed.rows)
+            if (parsed.selectedArmada) setSelectedArmada(parsed.selectedArmada)
+            if (parsed.selectedRate) setSelectedRate(parsed.selectedRate)
+            if (parsed.invoiceInput) setInvoiceInput(parsed.invoiceInput)
+            setHasRestoredDraft(true)
+            toast.info('Draft pesanan sebelumnya otomatis dipulihkan 💾')
+          }
+        }
+      }
+    } catch (_) {}
+  }, [])
+
+  // Auto-save draft when fields change
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const hasContent = rows.some(r => r.nama_apotek || r.alamat_lengkap)
+      if (hasContent) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          selectedArmada,
+          selectedRate,
+          rows,
+          invoiceInput,
+          updatedAt: new Date().toISOString(),
+        }))
+        setHasRestoredDraft(true)
+      }
+    } catch (_) {}
+  }, [selectedArmada, selectedRate, rows, invoiceInput])
+
+  const clearDraft = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(DRAFT_KEY)
+    }
+    setRows([INITIAL_ROW()])
+    setInvoiceInput({})
+    setHasRestoredDraft(false)
+    toast.success('Draft pesanan telah dibersihkan')
+  }
 
   // Autocomplete popup states
   const [activeLookupRowId, setActiveLookupRowId] = useState<number | null>(null)
@@ -386,6 +439,10 @@ export default function CreateOrderPage() {
         }))
       })
       toast.success('Order berhasil didaftarkan!')
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(DRAFT_KEY)
+      }
+      setHasRestoredDraft(false)
       setStep(1); setRows([INITIAL_ROW()]); setPreview(null); setInvoiceInput({})
       router.push('/dashboard/orders')
     } catch (err: unknown) {
@@ -423,7 +480,14 @@ export default function CreateOrderPage() {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
-            <h1 className="text-lg font-bold leading-tight text-foreground">Buat Order Pengiriman</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold leading-tight text-foreground">Buat Order Pengiriman</h1>
+              {hasRestoredDraft && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                  <Save className="h-3 w-3" /> Auto Draft Active
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">Langkah {step} dari 3</p>
           </div>
         </div>
@@ -448,7 +512,16 @@ export default function CreateOrderPage() {
         </div>
 
         {/* Right Side: Action Button */}
-        <div className="w-full md:w-auto flex justify-end">
+        <div className="w-full md:w-auto flex items-center justify-end gap-2">
+          {hasRestoredDraft && (
+            <button
+              onClick={clearDraft}
+              className="flex items-center gap-1.5 h-10 px-3 rounded-lg border border-border text-muted-foreground hover:text-foreground text-xs font-medium hover:bg-accent transition-colors"
+              title="Bersihkan Draft Form"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Reset Form
+            </button>
+          )}
           {step < 3 ? (
             <button
               onClick={() => {
