@@ -65,10 +65,13 @@ export default function LiveTrackingMap({
 
       // Initialize map instance once
       if (!mapInstanceRef.current) {
+        const container = mapContainerRef.current
+        if (!container) return
+
         const initialLat = driver.current_lat || pharmacyLat || -7.782889
         const initialLng = driver.current_lng || pharmacyLng || 110.377042
 
-        const map = L.map(mapContainerRef.current, {
+        const map = L.map(container, {
           center: [initialLat, initialLng],
           zoom: 14,
           zoomControl: true,
