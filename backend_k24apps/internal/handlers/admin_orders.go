@@ -817,9 +817,11 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 		var mitraID int
 		var medicineSummary string
 		var createdAt time.Time
+		var pharmName, pharmAddr, delivAddr, custName string
 		err := pgRows.Scan(
-			&s.ID, &s.OrderNumber, &s.Status, &s.NamaApotek, &s.Alamat, &s.Alamat,
-			&s.NamaApotek, &medicineSummary, &s.Fee, &createdAt, &mitraID, &s.DriverID,
+			&s.ID, &s.OrderNumber, &s.Status, &pharmName, &pharmAddr,
+			&delivAddr, &custName, &medicineSummary, &s.Fee,
+			&createdAt, &mitraID, &s.DriverID,
 			&s.DriverName, &s.DriverPhone, &s.DriverPlate, &s.DriverVehicle, &s.DistanceKM,
 			&s.ParentOrderNumber, &s.DispatchID, &s.PickupPhotoUrl, &s.PickupNote,
 			&s.RejectPhotoUrl, &s.RejectNote, &s.RejectReason, &s.RejectApproved,
@@ -828,6 +830,14 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 		)
 		if err != nil {
 			continue
+		}
+		s.NamaApotek = custName
+		if s.NamaApotek == "" {
+			s.NamaApotek = pharmName
+		}
+		s.Alamat = delivAddr
+		if s.Alamat == "" {
+			s.Alamat = pharmAddr
 		}
 		// Parse armada, rate_type, invoices from medicine_summary
 		s.Armada, s.RateType = parseArmadaRate(medicineSummary)

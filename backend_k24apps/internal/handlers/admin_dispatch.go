@@ -473,11 +473,14 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			return
 		}
 
-		// Update order row: assign driver, set recalculated delivery fee, update status
-		// Status is set to 'WAITING_FOR_PICKUP' so it's ready for driver pick up.
+		// Update order row: assign driver, preserve calculated delivery fee if > 0, update status
 		_, err = tx.Exec(ctx,
 			`UPDATE orders 
-			 SET driver_id = $1, delivery_fee = $2, dispatch_id = $3, distance_km = $4, status = 'WAITING_FOR_PICKUP'
+			 SET driver_id = $1, 
+			     delivery_fee = CASE WHEN delivery_fee > 0 THEN delivery_fee ELSE $2 END, 
+			     dispatch_id = $3, 
+			     distance_km = $4, 
+			     status = 'WAITING_FOR_PICKUP'
 			 WHERE id = $5;`,
 			req.DriverID, segmentArgo, dispatchNumber, segmentDist, o.id,
 		)
