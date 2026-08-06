@@ -18,6 +18,17 @@ import (
 func RunMigrations(pool *pgxpool.Pool, fs embed.FS) error {
 	ctx := context.Background()
 
+	// Ensure schema_migrations tracking table exists
+	_, err := pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version VARCHAR(255) PRIMARY KEY,
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
 	// Read migration directory entries
 	entries, err := fs.ReadDir("migrations")
 	if err != nil {
@@ -37,6 +48,12 @@ func RunMigrations(pool *pgxpool.Pool, fs embed.FS) error {
 			continue
 		}
 
+		var alreadyApplied bool
+		err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)", name).Scan(&alreadyApplied)
+		if err == nil && alreadyApplied {
+			continue // Skip already applied migrations
+		}
+
 		log.Printf("Running migration: %s", name)
 
 		content, err := fs.ReadFile("migrations/" + name)
@@ -49,6 +66,7 @@ func RunMigrations(pool *pgxpool.Pool, fs embed.FS) error {
 			return err
 		}
 
+		_, _ = pool.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING", name)
 		log.Printf("Migration %s applied successfully.", name)
 	}
 
