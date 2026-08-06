@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://backend:8087'
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || 'http://backend:8087'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ path: string[] }> }) {
   const { path } = await props.params
