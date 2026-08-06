@@ -29,10 +29,11 @@ func ConnectDB(cfg *config.Config) (*pgxpool.Pool, error) {
 	}
 
 	// Tweak performance pools (to prevent lags/slow queries)
-	poolConfig.MaxConns = 10
-	poolConfig.MinConns = 2
-	poolConfig.MaxConnIdleTime = 15 * time.Minute
-	poolConfig.MaxConnLifetime = 1 * time.Hour
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+	poolConfig.MaxConnIdleTime = 10 * time.Minute
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.HealthCheckPeriod = 1 * time.Minute
 
 	// Connect
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -1300,11 +1300,13 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	ctx := context.Background()
 	var distance float64
 
-	// Check route cache
+	// Check route cache using indexed range query (0.0001 deg is ~11 meters)
 	err := db.QueryRow(ctx, `
 	SELECT distance_km FROM route_cache 
-	WHERE ABS(origin_lat - $1) < 0.0001 AND ABS(origin_long - $2) < 0.0001 
-	  AND ABS(dest_lat - $3) < 0.0001 AND ABS(dest_long - $4) < 0.0001 
+	WHERE (origin_lat BETWEEN $1 - 0.0001 AND $1 + 0.0001)
+	  AND (origin_long BETWEEN $2 - 0.0001 AND $2 + 0.0001)
+	  AND (dest_lat BETWEEN $3 - 0.0001 AND $3 + 0.0001)
+	  AND (dest_long BETWEEN $4 - 0.0001 AND $4 + 0.0001)
 	LIMIT 1;`, originLat, originLng, destLat, destLng).Scan(&distance)
 	if err == nil {
 		return distance, nil
@@ -1316,7 +1318,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	if hereKey != "" {
 		u := fmt.Sprintf("https://router.hereapi.com/v8/routes?transportMode=car&origin=%f,%f&destination=%f,%f&return=summary&apiKey=%s",
 			originLat, originLng, destLat, destLng, hereKey)
-		httpClient := &http.Client{Timeout: 5 * time.Second}
+		httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
 		resp, err := httpClient.Get(u)
 		if err == nil {
 			defer resp.Body.Close()
@@ -1343,7 +1345,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 		if apiKey != "" {
 			u := fmt.Sprintf("https://maps.googleapis.com/maps/api/distancematrix/json?origins=%f,%f&destinations=%f,%f&key=%s",
 				originLat, originLng, destLat, destLng, apiKey)
-			httpClient := &http.Client{Timeout: 5 * time.Second}
+			httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
 			resp, err := httpClient.Get(u)
 			if err == nil {
 				defer resp.Body.Close()
@@ -1373,7 +1375,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	if !apiSuccess {
 		u := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false",
 			originLng, originLat, destLng, destLat)
-		httpClient := &http.Client{Timeout: 5 * time.Second}
+		httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
 		resp, err := httpClient.Get(u)
 		if err == nil {
 			defer resp.Body.Close()

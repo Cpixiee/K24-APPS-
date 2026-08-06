@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"backend_k24apps/internal/database"
 	"backend_k24apps/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -28,9 +27,6 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 	driverID := driverIDVal.(int)
-
-	// Seeding mock data on demand for new drivers
-	database.SeedMockData(h.DB, driverID)
 
 	ctx := context.Background()
 	var data models.DashboardData
@@ -109,10 +105,12 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 	FROM orders o
 	LEFT JOIN dispatch_id_detail d ON o.id = d.order_id
 	LEFT JOIN mitra_profiles mp ON o.mitra_id = mp.user_id
-	LEFT JOIN (
-		SELECT DISTINCT ON (nama_apotek, alamat_lengkap) nama_apotek, alamat_lengkap, latitude, longitude 
-		FROM alamat_penerima
-	) ap ON (o.customer_name = ap.nama_apotek AND o.delivery_address = ap.alamat_lengkap)
+	LEFT JOIN LATERAL (
+		SELECT latitude, longitude 
+		FROM alamat_penerima 
+		WHERE nama_apotek = o.customer_name AND alamat_lengkap = o.delivery_address 
+		LIMIT 1
+	) ap ON true
 	WHERE o.driver_id = $1 
 	  AND o.status IN ('WAITING_FOR_PICKUP', 'DELIVERING', 'REJECTED_WAITING_APPROVAL', 'PENDING', 'READY_FOR_PICKUP_FACTURE')
 	ORDER BY COALESCE(d.sequence_number, 0) ASC;`

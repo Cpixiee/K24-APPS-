@@ -64,8 +64,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!user) return
     fetchNotifications()
 
-    // Poll every 5 seconds for real-time web notifications
-    const interval = setInterval(fetchNotifications, 5000)
+    // Poll every 20 seconds only when tab is active to optimize database load
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchNotifications()
+      }
+    }, 20000)
     return () => clearInterval(interval)
   }, [user, fetchNotifications])
 
