@@ -33,9 +33,22 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
   const targetUrl = `${BACKEND_URL}/api/${path}${searchParams ? `?${searchParams}` : ''}`
 
   const headers = new Headers()
+  const hopByHopHeaders = new Set([
+    'host',
+    'connection',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'transfer-encoding',
+    'upgrade',
+    'content-length',
+    'accept-encoding',
+  ])
+
   request.headers.forEach((value, key) => {
-    // Forward all headers except host to avoid proxy host mismatch
-    if (key.toLowerCase() !== 'host') {
+    if (!hopByHopHeaders.has(key.toLowerCase())) {
       headers.set(key, value)
     }
   })
@@ -53,15 +66,15 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
       method: request.method,
       headers,
       body,
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(10000),
       // For Node environment to allow body streams properly
       duplex: body ? 'half' : undefined,
     } as any)
 
     const responseHeaders = new Headers()
     res.headers.forEach((value, key) => {
-      // Don't forward Content-Encoding (e.g. gzip) if we are sending plain arrayBuffer
-      if (key.toLowerCase() !== 'content-encoding') {
+      const lowerKey = key.toLowerCase()
+      if (!hopByHopHeaders.has(lowerKey) && lowerKey !== 'content-encoding') {
         responseHeaders.set(key, value)
       }
     })
