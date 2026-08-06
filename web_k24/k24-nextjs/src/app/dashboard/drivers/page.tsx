@@ -69,8 +69,10 @@ function DriversPageContent() {
   })
   const [confirmLoading, setConfirmLoading] = useState(false)
 
-  const fetchDrivers = useCallback(async () => {
-    setLoading(true)
+  const fetchDrivers = useCallback(async (isInitial = false) => {
+    if (isInitial || drivers.length === 0) {
+      setLoading(true)
+    }
     try {
       const res = await adminAPI.getDrivers()
       const rawList = res.data?.data ?? res.data ?? []
@@ -82,9 +84,9 @@ function DriversPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [drivers.length])
 
-  useEffect(() => { fetchDrivers() }, [fetchDrivers])
+  useEffect(() => { fetchDrivers(true) }, [fetchDrivers])
 
   const triggerApprove = (id: number, name: string) => {
     setConfirmModal({
