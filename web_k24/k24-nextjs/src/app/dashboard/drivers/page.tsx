@@ -56,6 +56,19 @@ function DriversPageContent() {
     driverName?: string
   }>({ isOpen: false, title: '', src: '' })
 
+  const openDocModal = async (title: string, rawSrc: string, driverId: number, driverName: string, docType: string) => {
+    let finalSrc = rawSrc || ''
+    if (rawSrc && rawSrc.startsWith('/api/admin/drivers/')) {
+      try {
+        const res = await adminAPI.getDriverDocument(driverId, docType)
+        finalSrc = res.data?.data?.doc_url || ''
+      } catch (err) {
+        console.error('Failed to load driver document:', err)
+      }
+    }
+    setDocumentModal({ isOpen: true, title, src: finalSrc, driverId, driverName })
+  }
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean
     driverId: number | null
@@ -397,21 +410,21 @@ function DriversPageContent() {
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
                             <button
-                              onClick={() => setDocumentModal({ isOpen: true, title: `KTP - ${d.name}`, src: d.ktp_url || '', driverId: d.id, driverName: d.name })}
+                              onClick={() => openDocModal(`KTP - ${d.name}`, d.ktp_url || '', d.id, d.name, 'ktp')}
                               className="inline-flex items-center gap-1 text-[11px] font-semibold border border-border bg-background hover:bg-accent px-2 py-1 rounded-md text-foreground transition-colors"
                               title="Lihat KTP"
                             >
                               <Eye className="h-3 w-3 text-blue-500" /> KTP
                             </button>
                             <button
-                              onClick={() => setDocumentModal({ isOpen: true, title: `SIM - ${d.name}`, src: d.sim_url || '', driverId: d.id, driverName: d.name })}
+                              onClick={() => openDocModal(`SIM - ${d.name}`, d.sim_url || '', d.id, d.name, 'sim')}
                               className="inline-flex items-center gap-1 text-[11px] font-semibold border border-border bg-background hover:bg-accent px-2 py-1 rounded-md text-foreground transition-colors"
                               title="Lihat SIM"
                             >
                               <Eye className="h-3 w-3 text-blue-500" /> SIM
                             </button>
                             <button
-                              onClick={() => setDocumentModal({ isOpen: true, title: `STNK - ${d.name}`, src: d.stnk_url || '', driverId: d.id, driverName: d.name })}
+                              onClick={() => openDocModal(`STNK - ${d.name}`, d.stnk_url || '', d.id, d.name, 'stnk')}
                               className="inline-flex items-center gap-1 text-[11px] font-semibold border border-border bg-background hover:bg-accent px-2 py-1 rounded-md text-foreground transition-colors"
                               title="Lihat STNK"
                             >

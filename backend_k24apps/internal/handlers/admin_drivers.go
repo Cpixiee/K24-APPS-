@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"backend_k24apps/internal/models"
 	"github.com/gin-gonic/gin"
@@ -65,10 +67,53 @@ func (h *AdminHandler) GetDrivers(c *gin.Context) {
 			return
 		}
 		d.Role = "DRIVER"
+
+		// Optimization: If document fields contain large base64 image strings, convert them to lightweight
+		// document API endpoint URLs to avoid transferring 100+ MB payload on driver list loads.
+		if strings.HasPrefix(d.KTPUrl, "data:") || len(d.KTPUrl) > 500 {
+			d.KTPUrl = fmt.Sprintf("/api/admin/drivers/%d/document?type=ktp", d.ID)
+		}
+		if strings.HasPrefix(d.SIMUrl, "data:") || len(d.SIMUrl) > 500 {
+			d.SIMUrl = fmt.Sprintf("/api/admin/drivers/%d/document?type=sim", d.ID)
+		}
+		if strings.HasPrefix(d.STNKUrl, "data:") || len(d.STNKUrl) > 500 {
+			d.STNKUrl = fmt.Sprintf("/api/admin/drivers/%d/document?type=stnk", d.ID)
+		}
+
 		drivers = append(drivers, d)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Data: drivers})
+}
+
+// GetDriverDocument returns the document image (KTP, SIM, or STNK) on-demand for a specific driver
+func (h *AdminHandler) GetDriverDocument(c *gin.Context) {
+	driverID := c.Param("id")
+	docType := c.Query("type")
+
+	ctx := context.Background()
+	var colName string
+	switch docType {
+	case "sim":
+		colName = "sim_url"
+	case "stnk":
+		colName = "stnk_url"
+	default:
+		colName = "ktp_url"
+	}
+
+	query := fmt.Sprintf("SELECT COALESCE(%s, '') FROM driver_profiles WHERE user_id = $1", colName)
+	var docURL string
+	err := h.DB.QueryRow(ctx, query, driverID).Scan(&docURL)
+	if err == pgx.ErrNoRows || docURL == "" {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Dokumen tidak ditemukan"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil dokumen"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Data: gin.H{"doc_url": docURL}})
 }
 
 // ApproveDriver marks a driver registration as approved

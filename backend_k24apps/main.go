@@ -156,6 +156,7 @@ func main() {
 		{
 			admin.GET("/stats", adminHandler.GetAdminStats)
 			admin.GET("/drivers", adminHandler.GetDrivers)
+			admin.GET("/drivers/:id/document", adminHandler.GetDriverDocument)
 			admin.POST("/drivers/:id/approve", adminHandler.ApproveDriver)
 			admin.POST("/drivers/:id/reject", adminHandler.RejectDriver)
 			admin.GET("/mitra", adminHandler.GetMitra)

@@ -47,6 +47,7 @@ export const authAPI = {
 export const adminAPI = {
   getStats: () => apiClient.get('/admin/stats'),
   getDrivers: () => apiClient.get('/admin/drivers'),
+  getDriverDocument: (id: number, type: string) => apiClient.get(`/admin/drivers/${id}/document?type=${type}`),
   getMitra: () => apiClient.get('/admin/mitra'),
   createMitra: (data: unknown) => apiClient.post('/admin/mitra', data),
   createOrder: (data: unknown) => apiClient.post('/admin/orders', data),
