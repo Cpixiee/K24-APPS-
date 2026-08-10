@@ -28,7 +28,7 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 	LEFT JOIN users u ON o.mitra_id = u.id
 	WHERE (o.driver_id IS NULL OR o.driver_id = 0) 
 	  AND (o.dispatch_id IS NULL OR o.dispatch_id = '') 
-	  AND o.status = 'PENDING'
+	  AND LOWER(TRIM(o.status)) = 'pending'
 	ORDER BY o.created_at DESC;`
 
 	rows, err := h.DB.Query(ctx, query)
