@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -401,17 +402,28 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		})
 	}
 
-	// Sort sequence by Zone Rank (1, 2, 3, 99) and nearest distance from origin
+	// Sort sequence by Zone Rank and nearest distance from origin
 	orderedSequence := []int{}
 	currLat, currLng := originLat, originLong
-	for _, zoneRank := range []int{1, 2, 3, 99} {
-		group := []orderSeqItem{}
-		for _, item := range seqItems {
-			if item.zona == zoneRank {
-				group = append(group, item)
-			}
-		}
 
+	// Collect unique zones present in seqItems dynamically (guarantees Zona 4, Zona 5 are included)
+	zoneMap := make(map[int][]orderSeqItem)
+	for _, item := range seqItems {
+		z := item.zona
+		if z <= 0 {
+			z = 99
+		}
+		zoneMap[z] = append(zoneMap[z], item)
+	}
+
+	uniqueZones := make([]int, 0, len(zoneMap))
+	for z := range zoneMap {
+		uniqueZones = append(uniqueZones, z)
+	}
+	sort.Ints(uniqueZones)
+
+	for _, zoneRank := range uniqueZones {
+		group := zoneMap[zoneRank]
 		remaining := make([]orderSeqItem, len(group))
 		copy(remaining, group)
 
