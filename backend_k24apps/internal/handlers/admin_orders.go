@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -99,7 +100,7 @@ func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolved
 		return items
 	}
 
-	// Group items by zone hierarchy (1: Zona 1, 2: Zona 2, 3: Zona 3, 99: Non-Zona)
+	// Group items by zone hierarchy (1: Zona 1, 2: Zona 2, 3: Zona 3, 4: Zona 4, 5: Zona 5, 99: Non-Zona)
 	groups := make(map[int][]resolvedBulkItem)
 	for _, item := range items {
 		z := item.zona
@@ -109,7 +110,12 @@ func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolved
 		groups[z] = append(groups[z], item)
 	}
 
-	orderedZones := []int{1, 2, 3, 99}
+	// Dynamically collect all zone keys to guarantee no zone items are ever dropped
+	orderedZones := make([]int, 0, len(groups))
+	for z := range groups {
+		orderedZones = append(orderedZones, z)
+	}
+	sort.Ints(orderedZones)
 	sorted := make([]resolvedBulkItem, 0, len(items))
 	currLat, currLng := originLat, originLng
 
