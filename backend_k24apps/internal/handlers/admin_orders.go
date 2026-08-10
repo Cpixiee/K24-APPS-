@@ -1472,7 +1472,7 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 	// Trigger Notifications for DELIVERING status transition
 	var driverID, mitraID *int
 	var pharmName, customerName, orderNum string
-	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, customer_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &customerName, &orderNum)
+	err := h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, customer_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &customerName, &orderNum)
 	if err == nil {
 		if driverID != nil {
 			title := "Pesanan DALAM PENGANTARAN (DELIVERING)"
