@@ -26,8 +26,10 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 	FROM orders o
 	LEFT JOIN users u ON o.mitra_id = u.id
 	LEFT JOIN alamat_penerima ap ON ap.nama_apotek = o.customer_name AND ap.alamat_lengkap = o.delivery_address
-	WHERE o.driver_id IS NULL AND o.status IN ('PENDING', 'PICKING_UP')
-	ORDER BY o.dispatch_id ASC, o.created_at DESC;`
+	WHERE (o.driver_id IS NULL OR o.driver_id = 0) 
+	  AND (o.dispatch_id IS NULL OR o.dispatch_id = '') 
+	  AND o.status = 'PENDING'
+	ORDER BY o.created_at DESC;`
 
 	rows, err := h.DB.Query(ctx, query)
 	if err != nil {

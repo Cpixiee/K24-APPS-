@@ -124,48 +124,50 @@ export default function DispatchPage() {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   }
 
-  // Group stops into clusters of max `maxSize` by nearest-neighbor proximity.
-  // Stops with no coordinates (lat=0, lng=0) are bucketed by parent_order_number instead.
+  // Group stops into clusters of max `maxSize` by Mitra/Region first, then by nearest-neighbor proximity.
   const clusterByProximity = (stops: Stop[], maxSize = 4): Stop[][] => {
-    const withCoords = stops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
-    const noCoords = stops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
+    // 1. Group stops by Mitra Name / Region first so different cities/mitras never mix in the same cluster card
+    const mitraGroups = new Map<string, Stop[]>()
+    stops.forEach((s) => {
+      const mitraKey = s.mitra_name || 'Mitra Apotek'
+      if (!mitraGroups.has(mitraKey)) mitraGroups.set(mitraKey, [])
+      mitraGroups.get(mitraKey)!.push(s)
+    })
 
     const clusters: Stop[][] = []
-    const assigned = new Set<number>()
 
-    for (let i = 0; i < withCoords.length; i++) {
-      const seed = withCoords[i]
-      if (assigned.has(seed.id)) continue
+    // 2. Cluster each Mitra/Region group by proximity
+    mitraGroups.forEach((mitraStops) => {
+      const withCoords = mitraStops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
+      const noCoords = mitraStops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
 
-      const cluster: Stop[] = [seed]
-      assigned.add(seed.id)
+      const assigned = new Set<number>()
 
-      // Build a sorted list of unassigned neighbours by distance from seed
-      const neighbours = withCoords
-        .filter((s) => !assigned.has(s.id))
-        .map((s) => ({ stop: s, dist: haversineKm(seed.lat!, seed.lng!, s.lat!, s.lng!) }))
-        .sort((a, b) => a.dist - b.dist)
+      for (let i = 0; i < withCoords.length; i++) {
+        const seed = withCoords[i]
+        if (assigned.has(seed.id)) continue
 
-      for (const { stop } of neighbours) {
-        if (cluster.length >= maxSize) break
-        if (!assigned.has(stop.id)) {
-          cluster.push(stop)
-          assigned.add(stop.id)
+        const cluster: Stop[] = [seed]
+        assigned.add(seed.id)
+
+        const neighbours = withCoords
+          .filter((s) => !assigned.has(s.id))
+          .map((s) => ({ stop: s, dist: haversineKm(seed.lat!, seed.lng!, s.lat!, s.lng!) }))
+          .sort((a, b) => a.dist - b.dist)
+
+        for (const { stop } of neighbours) {
+          if (cluster.length >= maxSize) break
+          if (!assigned.has(stop.id)) {
+            cluster.push(stop)
+            assigned.add(stop.id)
+          }
         }
+        clusters.push(cluster)
       }
-      clusters.push(cluster)
-    }
 
-    // Fallback: group no-coord stops by parent_order_number, max maxSize each
-    const noCoordGroups = new Map<string, Stop[]>()
-    noCoords.forEach((s) => {
-      const key = s.parent_order_number || s.order_number
-      if (!noCoordGroups.has(key)) noCoordGroups.set(key, [])
-      noCoordGroups.get(key)!.push(s)
-    })
-    noCoordGroups.forEach((group) => {
-      for (let i = 0; i < group.length; i += maxSize) {
-        clusters.push(group.slice(i, i + maxSize))
+      // Fallback for no-coord stops in this Mitra group: max maxSize each
+      for (let i = 0; i < noCoords.length; i += maxSize) {
+        clusters.push(noCoords.slice(i, i + maxSize))
       }
     })
 
@@ -182,9 +184,10 @@ export default function DispatchPage() {
     const clusters = clusterByProximity(filteredStops, 4)
     const newCards: DispatchCard[] = clusters.map((cluster, idx) => {
       const armadaTag = cluster[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
+      const mitraTag = cluster[0]?.mitra_name ? ` — ${cluster[0].mitra_name}` : ''
       return {
         id: `card-cluster-${idx}-${cluster[0]?.id}`,
-        title: `Card Cluster #${idx + 1} (${armadaTag} — ${cluster.length} Alamat)`,
+        title: `Card Cluster #${idx + 1}${mitraTag} (${armadaTag} — ${cluster.length} Alamat)`,
         stops: cluster,
       }
     })
