@@ -50,23 +50,36 @@ function DriversPageContent() {
   }
   const [documentModal, setDocumentModal] = useState<{
     isOpen: boolean
+    loading: boolean
     title: string
     src: string
     driverId?: number
     driverName?: string
-  }>({ isOpen: false, title: '', src: '' })
+  }>({ isOpen: false, loading: false, title: '', src: '' })
 
   const openDocModal = async (title: string, rawSrc: string, driverId: number, driverName: string, docType: string) => {
-    let finalSrc = rawSrc || ''
+    // Open modal instantly with loading indicator
+    setDocumentModal({
+      isOpen: true,
+      loading: true,
+      title,
+      src: rawSrc && !rawSrc.startsWith('/api/admin/drivers/') ? rawSrc : '',
+      driverId,
+      driverName,
+    })
+
     if (rawSrc && rawSrc.startsWith('/api/admin/drivers/')) {
       try {
         const res = await adminAPI.getDriverDocument(driverId, docType)
-        finalSrc = res.data?.data?.doc_url || ''
+        const finalSrc = res.data?.data?.doc_url || ''
+        setDocumentModal((prev) => ({ ...prev, src: finalSrc, loading: false }))
       } catch (err) {
         console.error('Failed to load driver document:', err)
+        setDocumentModal((prev) => ({ ...prev, loading: false }))
       }
+    } else {
+      setDocumentModal((prev) => ({ ...prev, loading: false }))
     }
-    setDocumentModal({ isOpen: true, title, src: finalSrc, driverId, driverName })
   }
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -162,14 +175,19 @@ function DriversPageContent() {
           <div className="flex justify-between items-center px-6 py-4 border-b border-border">
             <h3 className="font-bold text-foreground">{documentModal.title}</h3>
             <button
-              onClick={() => setDocumentModal({ isOpen: false, title: '', src: '' })}
+              onClick={() => setDocumentModal({ isOpen: false, loading: false, title: '', src: '' })}
               className="h-8 w-8 rounded-lg flex items-center justify-center border border-border hover:bg-accent text-muted-foreground transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           <div className="p-6 flex items-center justify-center bg-muted/20 min-h-[300px]">
-            {documentModal.src && documentModal.src.length > 10 ? (
+            {documentModal.loading ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                <p className="text-xs font-semibold text-muted-foreground">Memuat gambar dokumen...</p>
+              </div>
+            ) : documentModal.src && documentModal.src.length > 10 ? (
               <img
                 src={documentModal.src}
                 alt={documentModal.title}
@@ -180,12 +198,7 @@ function DriversPageContent() {
                   if (fallback) fallback.style.display = 'flex'
                 }}
               />
-            ) : null}
-            <div className="hidden flex-col items-center gap-2 text-muted-foreground">
-              <FileText className="h-12 w-12 text-muted-foreground/55" />
-              <p className="text-xs font-medium">Dokumen tidak dapat dimuat atau berformat teks</p>
-            </div>
-            {(!documentModal.src || documentModal.src.length < 10) && (
+            ) : (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <FileText className="h-12 w-12 text-muted-foreground/55" />
                 <p className="text-xs font-medium">Dokumen tidak diunggah / kosong</p>
@@ -198,7 +211,7 @@ function DriversPageContent() {
                 onClick={() => {
                   const dId = documentModal.driverId!
                   const dName = documentModal.driverName!
-                  setDocumentModal({ isOpen: false, title: '', src: '' })
+                  setDocumentModal({ isOpen: false, loading: false, title: '', src: '' })
                   triggerReject(dId, dName)
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/40 dark:text-red-400 transition-colors"
@@ -209,7 +222,7 @@ function DriversPageContent() {
                 onClick={() => {
                   const dId = documentModal.driverId!
                   const dName = documentModal.driverName!
-                  setDocumentModal({ isOpen: false, title: '', src: '' })
+                  setDocumentModal({ isOpen: false, loading: false, title: '', src: '' })
                   triggerApprove(dId, dName)
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
