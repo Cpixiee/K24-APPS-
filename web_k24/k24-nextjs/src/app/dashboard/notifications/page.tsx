@@ -67,7 +67,7 @@ function getNotificationTheme(titleStr: string, messageStr: string) {
 
 export default function NotificationsWebPage() {
   const router = useRouter()
-  const { notifications, unreadCount, markAllAsRead, fetchNotifications } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead, fetchNotifications, markNotificationRead } = useNotifications()
   const [filter, setFilter] = useState<'ALL' | 'UNREAD' | 'REPORTS'>('ALL')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -98,9 +98,7 @@ export default function NotificationsWebPage() {
   const hasMore = filtered.length > visibleCount
 
   const handleNotificationClick = async (n: WebNotification) => {
-    try {
-      await notificationsAPI.markRead()
-    } catch (_) {}
+    markNotificationRead(n.id)
 
     const text = `${n.title} ${n.message}`
     const match = text.match(/DSP-\d+|ORD-\d+|#\d+/)

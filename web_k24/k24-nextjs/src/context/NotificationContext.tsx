@@ -20,6 +20,7 @@ interface NotificationContextType {
   loading: boolean
   fetchNotifications: () => Promise<void>
   markAllAsRead: () => Promise<void>
+  markNotificationRead: (id: number) => void
 }
 
 const NotificationContext = createContext<NotificationContextType | null>(null)
@@ -33,45 +34,57 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return
+
+    // Get locally persisted read notification IDs
+    let savedReadSet = new Set<number>()
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('k24_read_notifications') : null
+      if (stored) {
+        const readIdsArr: number[] = JSON.parse(stored)
+        savedReadSet = new Set(readIdsArr)
+      }
+    } catch (_) {}
+
     try {
       const res = await notificationsAPI.getNotifications()
       const list: WebNotification[] = res.data?.data || []
 
-      // Fetch active orders to generate real-time order lifecycle notification events (DELIVERING, PICKING UP, ARRIVED, etc.)
+      // Fetch active orders to generate real-time order lifecycle notification events
       try {
         const ordersRes = await adminAPI.getOrders()
         const ordersList: any[] = ordersRes.data?.data || []
 
         const orderEvents: WebNotification[] = []
         ordersList.forEach((o) => {
-          const pharm = o.pharmacy_name || 'PT K-24 Indonesia'
-          const num = o.order_number || `ORDER-00000${o.id}`
-          const customer = o.customer_name || 'Pelanggan'
-          const dateStr = o.created_at || new Date().toISOString()
-          const driverStr = o.driver_name ? ` (Driver ${o.driver_name})` : ''
+          const pharm = o?.pharmacy_name || 'PT K-24 Indonesia'
+          const rawId = o?.id || o?.order_id || Math.floor(Math.random() * 1000)
+          const num = o?.order_number || `ORDER-00000${rawId}`
+          const customer = o?.customer_name || 'Pelanggan'
+          const dateStr = o?.created_at || new Date().toISOString()
+          const driverStr = o?.driver_name ? ` (Driver ${o.driver_name})` : ''
 
-          if (o.status === 'DELIVERING') {
+          if (o?.status === 'DELIVERING') {
             orderEvents.push({
-              id: 90000 + o.id,
-              driver_id: o.driver_id || 0,
+              id: 90000 + rawId,
+              driver_id: o?.driver_id || 0,
               title: 'Pesanan DALAM PENGANTARAN (DELIVERING)',
               message: `Order ${num} (${pharm}) sedang DALAM PENGANTARAN${driverStr} menuju alamat penerima ${customer}.`,
               is_read: false,
               created_at: dateStr,
             })
-          } else if (o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE' || o.status === 'WAITING_FOR_PICKUP') {
+          } else if (o?.status === 'PICKING_UP' || o?.status === 'READY_FOR_PICKUP_FACTURE' || o?.status === 'WAITING_FOR_PICKUP') {
             orderEvents.push({
-              id: 80000 + o.id,
-              driver_id: o.driver_id || 0,
+              id: 80000 + rawId,
+              driver_id: o?.driver_id || 0,
               title: 'Penjemputan APOTEK (PICKING UP)',
               message: `Order ${num} (${pharm}) telah disiapkan dan siap untuk penjemputan obat di apotek.`,
               is_read: false,
               created_at: dateStr,
             })
-          } else if (o.status === 'ARRIVED' || o.status === 'ARRIVED_AT_LOCATION') {
+          } else if (o?.status === 'ARRIVED' || o?.status === 'ARRIVED_AT_LOCATION') {
             orderEvents.push({
-              id: 70000 + o.id,
-              driver_id: o.driver_id || 0,
+              id: 70000 + rawId,
+              driver_id: o?.driver_id || 0,
               title: 'Driver TIBA DI LOKASI (ARRIVED)',
               message: `Driver telah TIBA DI LOKASI alamat tujuan penerima ${customer} untuk order ${num}.`,
               is_read: false,
@@ -80,14 +93,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
         })
 
-        // Merge order lifecycle events with API notifications and sort by timestamp DESC
+        // Merge order lifecycle events with API notifications
         const mergedMap = new Map<number, WebNotification>()
         orderEvents.forEach((item) => mergedMap.set(item.id, item))
         list.forEach((item) => mergedMap.set(item.id, item))
 
-        const mergedList = Array.from(mergedMap.values()).sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
+        const mergedList = Array.from(mergedMap.values())
+          .map((item) => {
+            if (savedReadSet.has(item.id)) {
+              return { ...item, is_read: true }
+            }
+            return item
+          })
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
         setNotifications(mergedList)
 
@@ -107,7 +125,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
         previousNotifIdsRef.current = newIds
       } catch {
-        setNotifications(list)
+        const updatedList = list.map((item) => (savedReadSet.has(item.id) ? { ...item, is_read: true } : item))
+        setNotifications(updatedList)
       }
     } catch {
       // Ignore background errors
@@ -128,14 +147,46 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval)
   }, [user, fetchNotifications])
 
+  const markNotificationRead = useCallback((id: number) => {
+    try {
+      notificationsAPI.markRead()
+    } catch (_) {}
+
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('k24_read_notifications')
+        const readIds: number[] = stored ? JSON.parse(stored) : []
+        if (!readIds.includes(id)) {
+          readIds.push(id)
+          localStorage.setItem('k24_read_notifications', JSON.stringify(readIds))
+        }
+      }
+    } catch (_) {}
+
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    )
+  }, [])
+
   const markAllAsRead = useCallback(async () => {
     try {
       await notificationsAPI.markRead()
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
     } catch (err) {
       console.error('Failed to mark notifications read', err)
     }
-  }, [])
+
+    try {
+      if (typeof window !== 'undefined') {
+        const allIds = notifications.map((n) => n.id)
+        const stored = localStorage.getItem('k24_read_notifications')
+        const readIds: number[] = stored ? JSON.parse(stored) : []
+        const merged = Array.from(new Set([...readIds, ...allIds]))
+        localStorage.setItem('k24_read_notifications', JSON.stringify(merged))
+      }
+    } catch (_) {}
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+  }, [notifications])
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
 
@@ -147,6 +198,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         loading,
         fetchNotifications,
         markAllAsRead,
+        markNotificationRead,
       }}
     >
       {children}

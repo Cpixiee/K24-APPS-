@@ -70,7 +70,7 @@ function TrackLiveNotificationPageContent() {
   const searchParams = useSearchParams()
   const orderIdQuery = searchParams.get('orderId')
 
-  const { notifications, unreadCount, markAllAsRead, fetchNotifications } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead, fetchNotifications, markNotificationRead } = useNotifications()
   const [filter, setFilter] = useState<'ALL' | 'UNREAD' | 'REPORTS'>('ALL')
   const [search, setSearch] = useState(orderIdQuery || '')
   const [loading, setLoading] = useState(false)
@@ -101,9 +101,7 @@ function TrackLiveNotificationPageContent() {
   const hasMore = filtered.length > visibleCount
 
   const handleNotificationClick = async (n: WebNotification) => {
-    try {
-      await notificationsAPI.markRead()
-    } catch (_) {}
+    markNotificationRead(n.id)
 
     const text = `${n.title} ${n.message}`
     const match = text.match(/DSP-\d+|ORD-\d+|#\d+/)
