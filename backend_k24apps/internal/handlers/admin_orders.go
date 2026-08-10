@@ -1469,6 +1469,24 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 		}
 	}
 
+	// Trigger Notifications for DELIVERING status transition
+	var driverID, mitraID *int
+	var pharmName, customerName, orderNum string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, customer_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &customerName, &orderNum)
+	if err == nil {
+		if driverID != nil {
+			title := "Pesanan DALAM PENGANTARAN (DELIVERING)"
+			message := fmt.Sprintf("Order %s (%s) telah diambil di apotek dan sedang DALAM PENGANTARAN menuju penerima %s.", orderNum, pharmName, customerName)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+		}
+		if mitraID != nil {
+			title := "Pesanan DALAM PENGANTARAN (DELIVERING)"
+			message := fmt.Sprintf("Order %s (%s) telah berhasil diambil oleh kurir dan sedang DALAM PENGANTARAN.", orderNum, pharmName)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, title, message)
+		}
+		NotifyAdmins(ctx, h.DB, "Pesanan DALAM PENGANTARAN (DELIVERING)", fmt.Sprintf("Order %s (%s) telah diambil oleh kurir driver.", orderNum, pharmName))
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Status berhasil diubah menjadi ON DELIVERY"})
 }
 
