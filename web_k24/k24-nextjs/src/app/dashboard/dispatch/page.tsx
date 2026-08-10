@@ -124,22 +124,62 @@ export default function DispatchPage() {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   }
 
-  // Group stops into clusters of max `maxSize` by Mitra/Region first, then by nearest-neighbor proximity.
+  // Helper to detect geographic region/city for a stop to prevent mixing different cities in one card cluster
+  const detectStopRegion = (s: Stop): string => {
+    const text = `${s.customer_name || ''} ${s.delivery_address || ''} ${s.order_number || ''}`.toLowerCase()
+
+    if (
+      text.includes('surabaya') ||
+      text.includes('sidoarjo') ||
+      text.includes('gresik') ||
+      text.includes('rungkut') ||
+      text.includes('tandes') ||
+      text.includes('kenjeran') ||
+      text.includes('waru') ||
+      text.includes('candi') ||
+      text.includes('tulangan') ||
+      text.includes('krian') ||
+      text.includes('menganti') ||
+      text.includes('manyar') ||
+      text.includes('kebomas')
+    ) {
+      return 'Surabaya & Surrounding'
+    }
+
+    if (
+      text.includes('tangerang') ||
+      text.includes('jakarta') ||
+      text.includes('cimone') ||
+      text.includes('karawaci') ||
+      text.includes('bekasi') ||
+      text.includes('depok') ||
+      text.includes('bogor') ||
+      text.includes('banten')
+    ) {
+      return 'Jakarta / Tangerang & Surrounding'
+    }
+
+    // Try extracting explicit city or fallback to Mitra Name
+    return s.mitra_name || 'Mitra Apotek'
+  }
+
+  // Group stops into clusters of max `maxSize` by Geographic Region & Mitra first, then by nearest-neighbor proximity.
   const clusterByProximity = (stops: Stop[], maxSize = 4): Stop[][] => {
-    // 1. Group stops by Mitra Name / Region first so different cities/mitras never mix in the same cluster card
-    const mitraGroups = new Map<string, Stop[]>()
+    // 1. Group stops by Region + Mitra Name so different cities never mix in the same cluster card
+    const regionGroups = new Map<string, Stop[]>()
     stops.forEach((s) => {
-      const mitraKey = s.mitra_name || 'Mitra Apotek'
-      if (!mitraGroups.has(mitraKey)) mitraGroups.set(mitraKey, [])
-      mitraGroups.get(mitraKey)!.push(s)
+      const region = detectStopRegion(s)
+      const groupKey = `${s.mitra_name || 'Mitra'} | ${region}`
+      if (!regionGroups.has(groupKey)) regionGroups.set(groupKey, [])
+      regionGroups.get(groupKey)!.push(s)
     })
 
     const clusters: Stop[][] = []
 
-    // 2. Cluster each Mitra/Region group by proximity
-    mitraGroups.forEach((mitraStops) => {
-      const withCoords = mitraStops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
-      const noCoords = mitraStops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
+    // 2. Cluster each Region group by proximity
+    regionGroups.forEach((regionStops) => {
+      const withCoords = regionStops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
+      const noCoords = regionStops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
 
       const assigned = new Set<number>()
 
@@ -165,7 +205,7 @@ export default function DispatchPage() {
         clusters.push(cluster)
       }
 
-      // Fallback for no-coord stops in this Mitra group: max maxSize each
+      // Fallback for no-coord stops in this Region group: max maxSize each
       for (let i = 0; i < noCoords.length; i += maxSize) {
         clusters.push(noCoords.slice(i, i + maxSize))
       }
@@ -184,10 +224,12 @@ export default function DispatchPage() {
     const clusters = clusterByProximity(filteredStops, 4)
     const newCards: DispatchCard[] = clusters.map((cluster, idx) => {
       const armadaTag = cluster[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
-      const mitraTag = cluster[0]?.mitra_name ? ` — ${cluster[0].mitra_name}` : ''
+      const regionName = cluster[0] ? detectStopRegion(cluster[0]) : ''
+      const mitraTag = cluster[0]?.mitra_name ? ` [${cluster[0].mitra_name}]` : ''
+      const titleTag = regionName ? ` — ${regionName}${mitraTag}` : mitraTag
       return {
         id: `card-cluster-${idx}-${cluster[0]?.id}`,
-        title: `Card Cluster #${idx + 1}${mitraTag} (${armadaTag} — ${cluster.length} Alamat)`,
+        title: `Card Cluster #${idx + 1}${titleTag} (${armadaTag} — ${cluster.length} Alamat)`,
         stops: cluster,
       }
     })
