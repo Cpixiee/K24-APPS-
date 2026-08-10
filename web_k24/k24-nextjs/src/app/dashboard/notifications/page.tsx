@@ -112,15 +112,15 @@ export default function NotificationsWebPage() {
 
   return (
     <div className="space-y-6 pb-12 max-w-5xl mx-auto">
-      {/* Top Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-950 p-6 text-white shadow-xl border border-slate-700">
+      {/* Top Header Banner (Modern Clean White Theme) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl bg-card p-6 border border-border shadow-sm">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30">
-            <Bell className="h-3.5 w-3.5 text-emerald-400" />
+          <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <Bell className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
             PUSAT PEMBERITAHUAN WEBSITES
           </div>
-          <h2 className="text-2xl font-black tracking-tight text-white">Halaman Notifikasi & Laporan Pengiriman</h2>
-          <p className="text-xs text-slate-300">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Halaman Notifikasi & Laporan Pengiriman</h2>
+          <p className="text-xs text-muted-foreground">
             Laporan terkini penjemputan apotek, pengantaran kurir jalan, dan status penyelesaian order.
           </p>
         </div>
@@ -129,7 +129,7 @@ export default function NotificationsWebPage() {
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/30"
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-sm"
             >
               <CheckCheck className="h-4 w-4" />
               Tandai Semua Dibaca
@@ -137,7 +137,7 @@ export default function NotificationsWebPage() {
           )}
           <button
             onClick={handleRefresh}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-semibold text-white border border-slate-700 hover:bg-slate-700 transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-background px-4 py-2.5 text-xs font-semibold text-foreground border border-border hover:bg-accent transition"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -150,19 +150,19 @@ export default function NotificationsWebPage() {
         <div className="flex items-center gap-2 overflow-x-auto">
           <button
             onClick={() => setFilter('ALL')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'ALL' ? 'bg-primary text-primary-foreground shadow' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'ALL' ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
           >
             Semua ({notifications.length})
           </button>
           <button
             onClick={() => setFilter('UNREAD')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'UNREAD' ? 'bg-emerald-600 text-white shadow' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'UNREAD' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
           >
             Belum Dibaca ({unreadCount})
           </button>
           <button
             onClick={() => setFilter('REPORTS')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'REPORTS' ? 'bg-blue-600 text-white shadow' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${filter === 'REPORTS' ? 'bg-blue-600 text-white shadow-sm' : 'bg-muted/60 text-muted-foreground hover:text-foreground'}`}
           >
             Laporan Pengiriman
           </button>
@@ -178,8 +178,8 @@ export default function NotificationsWebPage() {
         </Link>
       </div>
 
-      {/* Main Container Card (Matching Screenshot 2 Design Theme) */}
-      <div className="rounded-2xl border border-emerald-600/30 bg-card p-4 sm:p-6 shadow-sm space-y-4">
+      {/* Main Container Card (Clean White Modern Theme matching app style) */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-sm space-y-4">
         {visibleNotifications.length === 0 ? (
           <div className="flex h-64 items-center justify-center text-center p-6">
             <div>
@@ -198,9 +198,9 @@ export default function NotificationsWebPage() {
                 <div
                   key={item.id}
                   onClick={() => handleNotificationClick(item)}
-                  className={`group cursor-pointer rounded-2xl border border-emerald-600/20 p-4 transition-all flex items-start gap-4 hover:border-emerald-500 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 ${
+                  className={`group cursor-pointer rounded-2xl border border-border p-4 transition-all flex items-start gap-4 hover:border-emerald-500/50 hover:bg-accent/40 ${
                     isUnread
-                      ? 'border-l-4 border-l-emerald-600 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-sm'
+                      ? 'border-l-4 border-l-emerald-600 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm'
                       : 'bg-card'
                   }`}
                 >
