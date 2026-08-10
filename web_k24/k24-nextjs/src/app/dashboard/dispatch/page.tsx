@@ -195,12 +195,10 @@ export default function DispatchPage() {
     const clusters = clusterByProximity(filteredStops, 4)
     const newCards: DispatchCard[] = clusters.map((cluster, idx) => {
       const armadaTag = cluster[0]?.armada?.toUpperCase() === 'MOBIL' ? '🚗 MOBIL' : '🛵 MOTOR'
-      const regionName = cluster[0] ? detectStopRegion(cluster[0]) : ''
-      const mitraTag = cluster[0]?.mitra_name ? ` [${cluster[0].mitra_name}]` : ''
-      const titleTag = regionName ? ` — ${regionName}${mitraTag}` : mitraTag
+      const mitraTag = cluster[0]?.mitra_name ? ` — ${cluster[0].mitra_name}` : ''
       return {
         id: `card-cluster-${idx}-${cluster[0]?.id}`,
-        title: `Card Cluster #${idx + 1}${titleTag} (${armadaTag} — ${cluster.length} Alamat)`,
+        title: `Card Cluster #${idx + 1}${mitraTag} (${armadaTag} — ${cluster.length} Alamat)`,
         stops: cluster,
       }
     })
