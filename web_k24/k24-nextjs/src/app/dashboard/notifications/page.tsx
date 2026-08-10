@@ -23,7 +23,7 @@ function formatDateTime(dateStr: string): string {
 }
 
 function getNotifBadge(title: string) {
-  const lower = title.toLowerCase()
+  const lower = (title || '').toLowerCase()
   if (lower.includes('sampai') || lower.includes('tiba') || lower.includes('lokasi')) {
     return <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-purple-100 dark:bg-purple-950/60 px-2 py-0.5 rounded-full"><Radio className="h-3 w-3" /> Tiba di Lokasi</span>
   }
@@ -51,7 +51,7 @@ export default function NotificationsWebPage() {
   const filtered = notifications.filter((n) => {
     if (filter === 'UNREAD') return !n.is_read
     if (filter === 'REPORTS') {
-      const lower = (n.title + ' ' + n.message).toLowerCase()
+      const lower = `${n?.title || ''} ${n?.message || ''}`.toLowerCase()
       return lower.includes('order') || lower.includes('faktur') || lower.includes('sampai') || lower.includes('selesai') || lower.includes('kurir')
     }
     return true

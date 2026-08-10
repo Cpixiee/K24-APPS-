@@ -110,10 +110,11 @@ function TrackLiveContent() {
   }, [selectedOrder])
 
   const filteredOrders = orders.filter((o) => {
+    const searchLower = (searchTerm || '').toLowerCase()
     const matchQuery =
-      o.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.pharmacy_name.toLowerCase().includes(searchTerm.toLowerCase())
+      (o?.order_number || '').toLowerCase().includes(searchLower) ||
+      (o?.customer_name || '').toLowerCase().includes(searchLower) ||
+      (o?.pharmacy_name || '').toLowerCase().includes(searchLower)
 
     if (!matchQuery) return false
     if (filterStatus === 'ACTIVE') return o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
