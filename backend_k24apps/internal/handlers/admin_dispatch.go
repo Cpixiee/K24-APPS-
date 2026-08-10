@@ -484,7 +484,7 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			     dispatch_id = $3, 
 			     distance_km = $4, 
 			     status = 'WAITING_FOR_PICKUP'
-			 WHERE id = $5 OR order_number = $6;`,
+			 WHERE id = $5 OR order_number = $6 OR (parent_order_number IS NOT NULL AND parent_order_number != '' AND parent_order_number = $6);`,
 			req.DriverID, segmentArgo, dispatchNumber, segmentDist, o.id, o.orderNumber,
 		)
 		if err != nil {
