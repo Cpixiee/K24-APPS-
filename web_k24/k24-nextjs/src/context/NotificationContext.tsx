@@ -35,13 +35,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const fetchNotifications = useCallback(async () => {
     if (!user) return
 
-    // Get locally persisted read notification IDs
+    // Get locally persisted read notification IDs and global read timestamp
     let savedReadSet = new Set<number>()
+    let allReadUntilTime = 0
     try {
-      const stored = typeof window !== 'undefined' ? localStorage.getItem('k24_read_notifications') : null
-      if (stored) {
-        const readIdsArr: number[] = JSON.parse(stored)
-        savedReadSet = new Set(readIdsArr)
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('k24_read_notifications')
+        if (stored) {
+          const readIdsArr: number[] = JSON.parse(stored)
+          savedReadSet = new Set(readIdsArr)
+        }
+        const untilStr = localStorage.getItem('k24_all_read_until')
+        if (untilStr) {
+          allReadUntilTime = new Date(untilStr).getTime()
+        }
       }
     } catch (_) {}
 
@@ -100,7 +107,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         const mergedList = Array.from(mergedMap.values())
           .map((item) => {
-            if (savedReadSet.has(item.id)) {
+            const itemTime = new Date(item.created_at).getTime()
+            if (savedReadSet.has(item.id) || (allReadUntilTime > 0 && itemTime <= allReadUntilTime)) {
               return { ...item, is_read: true }
             }
             return item
@@ -125,7 +133,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
         previousNotifIdsRef.current = newIds
       } catch {
-        const updatedList = list.map((item) => (savedReadSet.has(item.id) ? { ...item, is_read: true } : item))
+        const updatedList = list.map((item) => {
+          const itemTime = new Date(item.created_at).getTime()
+          if (savedReadSet.has(item.id) || (allReadUntilTime > 0 && itemTime <= allReadUntilTime)) {
+            return { ...item, is_read: true }
+          }
+          return item
+        })
         setNotifications(updatedList)
       }
     } catch {
@@ -182,6 +196,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const readIds: number[] = stored ? JSON.parse(stored) : []
         const merged = Array.from(new Set([...readIds, ...allIds]))
         localStorage.setItem('k24_read_notifications', JSON.stringify(merged))
+        localStorage.setItem('k24_all_read_until', new Date().toISOString())
       }
     } catch (_) {}
 

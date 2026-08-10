@@ -56,7 +56,7 @@ function getNotifIcon(title: string) {
 export default function Topbar({ onMobileMenuClick, onRefresh, showCreateMitra, onCreateMitra, showCreateForm }: TopbarProps) {
   const pathname = usePathname()
   const { user } = useAuth()
-  const { notifications, unreadCount, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead, markNotificationRead } = useNotifications()
   const [showNotifMenu, setShowNotifMenu] = useState(false)
   const [filter, setFilter] = useState<'ALL' | 'UNREAD'>('ALL')
   const menuRef = useRef<HTMLDivElement>(null)
@@ -196,7 +196,11 @@ export default function Topbar({ onMobileMenuClick, onRefresh, showCreateMitra, 
                   filteredNotifs.map((n) => (
                     <div
                       key={n.id}
-                      className={`p-3.5 flex gap-3 transition-colors ${
+                      onClick={() => {
+                        markNotificationRead(n.id)
+                        setShowNotifMenu(false)
+                      }}
+                      className={`p-3.5 flex gap-3 transition-colors cursor-pointer ${
                         !n.is_read ? 'bg-blue-50/40 dark:bg-blue-950/20 font-medium' : 'hover:bg-muted/30'
                       }`}
                     >

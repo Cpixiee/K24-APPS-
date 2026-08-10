@@ -106,10 +106,15 @@ func (h *NotificationHandler) MarkNotificationsRead(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	_, err := h.DB.Exec(ctx,
-		`UPDATE notifications 
-		 SET is_read = TRUE 
-		 WHERE user_id = $1 OR driver_id = $1`, uid)
+	var err error
+	if uid > 0 {
+		_, err = h.DB.Exec(ctx,
+			`UPDATE notifications 
+			 SET is_read = TRUE 
+			 WHERE user_id = $1 OR driver_id = $1 OR user_id IS NULL OR driver_id IS NULL`, uid)
+	} else {
+		_, err = h.DB.Exec(ctx, `UPDATE notifications SET is_read = TRUE`)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menandai notifikasi: " + err.Error()})
 		return
