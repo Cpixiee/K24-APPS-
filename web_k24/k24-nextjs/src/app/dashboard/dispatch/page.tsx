@@ -65,7 +65,6 @@ export default function DispatchPage() {
 
   const [sequence, setSequence] = useState<Stop[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [dispatchedIds, setDispatchedIds] = useState<number[]>([])
 
   const fetchPending = useCallback(async () => {
     setLoadingOrders(true)
@@ -78,25 +77,23 @@ export default function DispatchPage() {
 
   useEffect(() => { fetchPending() }, [fetchPending])
 
-  // Flatten batches to individual stops (filtering out dispatchedIds persistently)
+  // Flatten batches to individual stops
   const allStops = useMemo(() => {
     const stops: Stop[] = []
     batches.forEach((b) => {
       ;(b.stops || []).forEach((s) => {
-        if (!dispatchedIds.includes(s.id)) {
-          stops.push({
-            ...s,
-            armada: b.armada,
-            rate_type: b.rate_type,
-            mitra_name: b.mitra_name,
-            mitra_id: b.mitra_id,
-            dispatch_id: b.dispatch_id,
-          })
-        }
+        stops.push({
+          ...s,
+          armada: b.armada,
+          rate_type: b.rate_type,
+          mitra_name: b.mitra_name,
+          mitra_id: b.mitra_id,
+          dispatch_id: b.dispatch_id,
+        })
       })
     })
     return stops
-  }, [batches, dispatchedIds])
+  }, [batches])
 
   const filteredStops = useMemo(() => {
     return allStops.filter((s) => {
@@ -348,8 +345,7 @@ export default function DispatchPage() {
       const ids = finalSeq.map((s) => s.id)
       await adminAPI.createDispatchGroup({ order_ids: ids, driver_id: driverId, sequence: ids })
       toast.success('Dispatch berhasil diselesaikan!')
-      // Instantly & persistently track dispatched IDs to prevent re-fetching from showing them again
-      setDispatchedIds((prev) => Array.from(new Set([...prev, ...ids])))
+      // Instantly remove dispatched stops from local state so UI updates immediately
       setBatches((prevBatches) =>
         prevBatches
           .map((b) => ({
