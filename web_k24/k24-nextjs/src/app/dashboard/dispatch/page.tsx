@@ -374,7 +374,19 @@ export default function DispatchPage() {
       const ids = finalSeq.map((s) => s.id)
       await adminAPI.createDispatchGroup({ order_ids: ids, driver_id: driverId, sequence: ids })
       toast.success('Dispatch berhasil diselesaikan!')
-      setSelectedStopIds([]); setSelectedDriver(null); setSequence([]); setStep(0)
+      // Instantly remove dispatched stops from local state so UI updates immediately
+      setBatches((prevBatches) =>
+        prevBatches
+          .map((b) => ({
+            ...b,
+            stops: (b.stops || []).filter((s) => !ids.includes(s.id)),
+          }))
+          .filter((b) => (b.stops || []).length > 0)
+      )
+      setSelectedStopIds([])
+      setSelectedDriver(null)
+      setSequence([])
+      setStep(0)
       fetchPending()
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } }

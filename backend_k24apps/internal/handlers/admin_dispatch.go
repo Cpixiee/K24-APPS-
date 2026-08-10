@@ -216,6 +216,7 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 	// 2. Load order details & validate
 	type tempOrder struct {
 		id              int
+		orderNumber     string
 		mitraID         int
 		armada          string
 		rateType        string
@@ -233,9 +234,9 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		var o tempOrder
 		var medicineSummary string
 		err := h.DB.QueryRow(ctx,
-			`SELECT id, mitra_id, customer_name, delivery_address, medicine_summary 
+			`SELECT id, order_number, mitra_id, customer_name, delivery_address, medicine_summary 
 			 FROM orders WHERE id = $1 AND driver_id IS NULL`, orderID,
-		).Scan(&o.id, &o.mitraID, &o.customerName, &o.deliveryAddress, &medicineSummary)
+		).Scan(&o.id, &o.orderNumber, &o.mitraID, &o.customerName, &o.deliveryAddress, &medicineSummary)
 
 		if err == pgx.ErrNoRows {
 			c.JSON(http.StatusNotFound, models.APIResponse{
@@ -483,8 +484,8 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			     dispatch_id = $3, 
 			     distance_km = $4, 
 			     status = 'WAITING_FOR_PICKUP'
-			 WHERE id = $5;`,
-			req.DriverID, segmentArgo, dispatchNumber, segmentDist, o.id,
+			 WHERE id = $5 OR order_number = $6;`,
+			req.DriverID, segmentArgo, dispatchNumber, segmentDist, o.id, o.orderNumber,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
