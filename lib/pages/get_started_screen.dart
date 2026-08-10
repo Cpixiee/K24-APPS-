@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:apps_k24/pages/login_screen.dart';
 import 'package:apps_k24/pages/register_screen.dart';
+import 'package:apps_k24/pages/logged_screen.dart';
 import 'package:apps_k24/services/api_service.dart';
 
 // Custom painter to draw elegant, thin golden waves in the background
@@ -63,6 +64,28 @@ class GetStartedScreen extends StatefulWidget {
 class _GetStartedScreenState extends State<GetStartedScreen> {
   // Current active language: 'ID' or 'EN'
   String _currentLang = 'ID';
+  bool _isCheckingAuth = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAutoLogin();
+  }
+
+  Future<void> _checkAutoLogin() async {
+    final isValid = await ApiService.validateSession();
+    if (!mounted) return;
+    if (isValid) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoggedScreen()),
+      );
+    } else {
+      setState(() {
+        _isCheckingAuth = false;
+      });
+    }
+  }
 
   // Localization map for multi-language functionality
   final Map<String, Map<String, String>> _localizedValues = {
@@ -225,6 +248,37 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingAuth) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.local_shipping_rounded,
+                size: 64,
+                color: Color(0xFFFFB300),
+              ),
+              SizedBox(height: 20),
+              CircularProgressIndicator(
+                color: Color(0xFFFFB300),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Memeriksa Sesi...',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final screenHeight = MediaQuery.of(context).size.height;
     final strings = _localizedValues[_currentLang]!;
 

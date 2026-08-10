@@ -9,6 +9,7 @@ import 'package:apps_k24/pages/profile_pages.dart';
 import 'package:apps_k24/pages/detail_pesanan_page.dart';
 import 'package:apps_k24/pages/verifikasi_pod_page.dart';
 import 'package:apps_k24/pages/notifications_page.dart';
+import 'package:apps_k24/pages/track_live_page.dart';
 import 'package:apps_k24/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1016,34 +1017,55 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => DetailPesananPage(order: order),
+                          builder: (context) => TrackLivePage(initialOrder: order),
                         ),
                       ).then((_) => _fetchDashboardData());
                     },
-                    icon: const Icon(Icons.visibility_rounded, size: 16),
-                    label: const Text('Detail Pesanan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                    icon: const Icon(Icons.radar_rounded, size: 16),
+                    label: const Text('Lacak Live', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF0054A6),
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailPesananPage(order: order),
+                        ),
+                      ).then((_) => _fetchDashboardData());
+                    },
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('Detail', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _handleCompleteOrder(order.id),
                     icon: const Icon(Icons.check_circle_rounded, size: 16),
                     label: Text(
-                      stopsCount > 1 ? 'Titik $activeStopIndex / Unbox' : 'Selesaikan',
+                      stopsCount > 1 ? 'Titik $activeStopIndex' : 'Selesai',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF0054A6),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
@@ -1079,6 +1101,17 @@ class _LoggedScreenState extends State<LoggedScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildQuickActionButton(
+            icon: Icons.radar_rounded,
+            label: 'Lacak Live',
+            color: const Color(0xFF10B981),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TrackLivePage()),
+              );
+            },
+          ),
+          _buildQuickActionButton(
             icon: Icons.assignment_rounded,
             label: 'Pesanan',
             color: const Color(0xFF0054A6),
@@ -1087,16 +1120,17 @@ class _LoggedScreenState extends State<LoggedScreen> {
           _buildQuickActionButton(
             icon: Icons.account_balance_wallet_rounded,
             label: 'Dompet',
-            color: const Color(0xFF10B981),
+            color: const Color(0xFF059669),
             onTap: () => setState(() => _currentTab = 2),
           ),
           _buildQuickActionButton(
-            icon: Icons.qr_code_scanner_rounded,
-            label: 'Scan QR',
+            icon: Icons.notifications_active_rounded,
+            label: 'Notifikasi',
             color: const Color(0xFFFFB300),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Fitur Scan QR Siap Digunakan!'), backgroundColor: AppColors.primaryGreen),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotificationsPage()),
               );
             },
           ),

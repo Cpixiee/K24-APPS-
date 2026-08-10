@@ -187,7 +187,32 @@ class ApiService {
   // Check if driver is currently logged in
   static Future<bool> isLoggedIn() async {
     final token = await getToken();
-    return token != null;
+    return token != null && token.isNotEmpty;
+  }
+
+  // Validate stored session token for auto-login
+  static Future<bool> validateSession() async {
+    final token = await getToken();
+    if (token == null || token.trim().isEmpty) return false;
+    
+    try {
+      final url = Uri.parse('$baseUrl/driver/dashboard');
+      final headers = await _getHeaders(authRequired: true);
+      final response = await http.get(url, headers: headers).timeout(const Duration(seconds: 4));
+      
+      if (response.statusCode == 200) {
+        return true;
+      } else if (response.statusCode == 401) {
+        // Token is expired or invalid on backend
+        await clearAuthData();
+        return false;
+      }
+      // For temporary server errors or other status codes, keep session active
+      return true;
+    } catch (_) {
+      // Offline / network timeout: treat saved token as valid
+      return true;
+    }
   }
 
   // Header factory to automatically attach Bearer JWT token when available

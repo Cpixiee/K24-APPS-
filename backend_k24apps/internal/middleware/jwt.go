@@ -25,7 +25,7 @@ func GenerateToken(userID int, email string, role string, secret string) (string
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(8 * time.Hour)), // Valid for 8 hours
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(365 * 24 * time.Hour)), // Long-lived token valid for 1 year
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},

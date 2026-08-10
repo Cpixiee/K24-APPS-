@@ -30,7 +30,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-const SESSION_DURATION_MS = 8 * 60 * 60 * 1000 // 8 hours
+const SESSION_DURATION_MS = 365 * 24 * 60 * 60 * 1000 // Long-lived session valid for 1 year (365 days)
 
 function isSessionExpired(): boolean {
   try {

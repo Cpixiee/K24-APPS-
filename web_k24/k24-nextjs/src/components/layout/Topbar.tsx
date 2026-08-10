@@ -2,12 +2,15 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { RefreshCw, Menu, Plus, Bell, Check, CheckCheck, Truck, Package, CheckCircle2, FileText } from 'lucide-react'
+import Link from 'next/link'
+import { RefreshCw, Menu, Plus, Bell, Check, CheckCheck, Truck, Package, CheckCircle2, FileText, Radio, ArrowRight } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useNotifications, WebNotification } from '@/context/NotificationContext'
 
 const TAB_TITLES: Record<string, { title: string; sub: string }> = {
   overview:       { title: 'Ringkasan Dashboard',       sub: 'Status, pertumbuhan, dan logistik pengiriman apotek saat ini.' },
+  'track-live':   { title: 'Lacak Live & Radar Pengiriman', sub: 'Pantau posisi kurir, peta rute GPS, dan log status order real-time.' },
+  notifications:  { title: 'Notifikasi & Laporan System', sub: 'Pusat pemberitahuan tugas pengantaran dan konfirmasi order.' },
   drivers:        { title: 'Manajemen Driver',          sub: 'Pantau armada pengiriman obat dan detail registrasi kurir.' },
   mitra:          { title: 'Apotek Mitra K-24',         sub: 'Daftar dan kelola lokasi outlet apotek mitra franchise K-24.' },
   'create-order': { title: 'Buat Order Pengiriman',     sub: 'Kirim pesanan kesehatan secara cepat lewat armada K-24.' },
@@ -214,6 +217,15 @@ export default function Topbar({ onMobileMenuClick, onRefresh, showCreateMitra, 
                     </div>
                   ))
                 )}
+              </div>
+              <div className="p-2 border-t border-border bg-accent/20 text-center">
+                <Link
+                  href="/dashboard/notifications"
+                  onClick={() => setShowNotifMenu(false)}
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-500 inline-flex items-center gap-1 transition"
+                >
+                  Lihat Semua Notifikasi & Laporan <ArrowRight className="h-3 w-3" />
+                </Link>
               </div>
             </div>
           )}
