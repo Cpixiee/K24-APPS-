@@ -19,13 +19,13 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 
 	// Select orders waiting for dispatch — LEFT JOIN alamat_penerima for proximity clustering
 	query := `
-	SELECT o.id, o.order_number, COALESCE(o.dispatch_id, '') as dispatch_id, o.mitra_id, COALESCE(u.name, 'Mitra Apotek') as mitra_name,
+	SELECT o.id, o.order_number, COALESCE(o.parent_order_number, '') as parent_order_number, COALESCE(o.dispatch_id, '') as dispatch_id, o.mitra_id, COALESCE(u.name, 'Mitra Apotek') as mitra_name,
 	       o.pharmacy_name, o.pharmacy_address, o.delivery_address,
 	       o.customer_name, o.customer_phone, o.medicine_summary, o.delivery_fee, o.created_at,
 	       COALESCE(ap.latitude, 0.0) as lat, COALESCE(ap.longitude, 0.0) as lng
 	FROM orders o
 	LEFT JOIN users u ON o.mitra_id = u.id
-	LEFT JOIN alamat_penerima ap ON ap.nama_apotek = o.customer_name AND ap.alamat_lengkap = o.delivery_address
+	LEFT JOIN alamat_penerima ap ON LOWER(TRIM(ap.nama_apotek)) = LOWER(TRIM(o.customer_name)) AND LOWER(TRIM(ap.alamat_lengkap)) = LOWER(TRIM(o.delivery_address))
 	WHERE (o.driver_id IS NULL OR o.driver_id = 0) 
 	  AND (o.dispatch_id IS NULL OR o.dispatch_id = '') 
 	  AND o.status = 'PENDING'
@@ -46,7 +46,7 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 
 	for rows.Next() {
 		var oID int
-		var oNum string
+		var oNum, parentOrderNum string
 		var dispID string
 		var mID *int // pointer agar bisa handle NULL
 		var mName string
@@ -56,7 +56,7 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 		var lat, lng float64
 
 		err := rows.Scan(
-			&oID, &oNum, &dispID, &mID, &mName,
+			&oID, &oNum, &parentOrderNum, &dispID, &mID, &mName,
 			&pName, &pAddr, &dAddr, &cName, &cPhone, &medSummary, &dFee, &cTime,
 			&lat, &lng,
 		)
@@ -69,7 +69,11 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 		}
 
 		if dispID == "" {
-			dispID = oNum
+			if parentOrderNum != "" {
+				dispID = parentOrderNum
+			} else {
+				dispID = oNum
+			}
 		}
 
 		// Extract invoices, armada and rate type from medicine summary
@@ -87,14 +91,15 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 		}
 
 		stop := models.PendingDispatchStop{
-			ID:              oID,
-			OrderNumber:     oNum,
-			CustomerName:    cName,
-			DeliveryAddress: dAddr,
-			Invoices:        invoices,
-			DeliveryFee:     dFee,
-			Lat:             lat,
-			Lng:             lng,
+			ID:                oID,
+			OrderNumber:       oNum,
+			ParentOrderNumber: parentOrderNum,
+			CustomerName:      cName,
+			DeliveryAddress:   dAddr,
+			Invoices:          invoices,
+			DeliveryFee:       dFee,
+			Lat:               lat,
+			Lng:               lng,
 		}
 
 		if batch, exists := batchMap[dispID]; exists {

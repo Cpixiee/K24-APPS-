@@ -166,51 +166,22 @@ export default function DispatchPage() {
     return s.mitra_name || 'Mitra Apotek'
   }
 
-  // Group stops into clusters of max `maxSize` by Geographic Region & Mitra first, then by nearest-neighbor proximity.
+  // Group stops into clusters of max `maxSize` by parent order batch ID so multi-address orders stay together in 1 card
   const clusterByProximity = (stops: Stop[], maxSize = 4): Stop[][] => {
-    // 1. Group stops by Region + Mitra Name so different cities never mix in the same cluster card
-    const regionGroups = new Map<string, Stop[]>()
+    // 1. Group stops by parent_order_number or dispatch_id so all addresses of the SAME order batch are kept together
+    const batchGroups = new Map<string, Stop[]>()
     stops.forEach((s) => {
-      const region = detectStopRegion(s)
-      const groupKey = `${s.mitra_name || 'Mitra'} | ${region}`
-      if (!regionGroups.has(groupKey)) regionGroups.set(groupKey, [])
-      regionGroups.get(groupKey)!.push(s)
+      const key = s.parent_order_number || s.dispatch_id || s.order_number
+      if (!batchGroups.has(key)) batchGroups.set(key, [])
+      batchGroups.get(key)!.push(s)
     })
 
     const clusters: Stop[][] = []
 
-    // 2. Cluster each Region group by proximity
-    regionGroups.forEach((regionStops) => {
-      const withCoords = regionStops.filter((s) => (s.lat ?? 0) !== 0 || (s.lng ?? 0) !== 0)
-      const noCoords = regionStops.filter((s) => (s.lat ?? 0) === 0 && (s.lng ?? 0) === 0)
-
-      const assigned = new Set<number>()
-
-      for (let i = 0; i < withCoords.length; i++) {
-        const seed = withCoords[i]
-        if (assigned.has(seed.id)) continue
-
-        const cluster: Stop[] = [seed]
-        assigned.add(seed.id)
-
-        const neighbours = withCoords
-          .filter((s) => !assigned.has(s.id))
-          .map((s) => ({ stop: s, dist: haversineKm(seed.lat!, seed.lng!, s.lat!, s.lng!) }))
-          .sort((a, b) => a.dist - b.dist)
-
-        for (const { stop } of neighbours) {
-          if (cluster.length >= maxSize) break
-          if (!assigned.has(stop.id)) {
-            cluster.push(stop)
-            assigned.add(stop.id)
-          }
-        }
-        clusters.push(cluster)
-      }
-
-      // Fallback for no-coord stops in this Region group: max maxSize each
-      for (let i = 0; i < noCoords.length; i += maxSize) {
-        clusters.push(noCoords.slice(i, i + maxSize))
+    // 2. Chunk each batch group into clusters of max `maxSize`
+    batchGroups.forEach((batchStops) => {
+      for (let i = 0; i < batchStops.length; i += maxSize) {
+        clusters.push(batchStops.slice(i, i + maxSize))
       }
     })
 

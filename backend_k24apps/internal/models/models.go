@@ -334,14 +334,15 @@ type PendingDispatchBatch struct {
 
 // PendingDispatchStop represents a single recipient delivery destination within a batch
 type PendingDispatchStop struct {
-	ID              int      `json:"id"`
-	OrderNumber     string   `json:"order_number"`
-	CustomerName    string   `json:"customer_name"`
-	DeliveryAddress string   `json:"delivery_address"`
-	Invoices        []string `json:"invoices"`
-	DeliveryFee     float64  `json:"delivery_fee"`
-	Lat             float64  `json:"lat"`
-	Lng             float64  `json:"lng"`
+	ID                int      `json:"id"`
+	OrderNumber       string   `json:"order_number"`
+	ParentOrderNumber string   `json:"parent_order_number"`
+	CustomerName      string   `json:"customer_name"`
+	DeliveryAddress   string   `json:"delivery_address"`
+	Invoices          []string `json:"invoices"`
+	DeliveryFee       float64  `json:"delivery_fee"`
+	Lat               float64  `json:"lat"`
+	Lng               float64  `json:"lng"`
 }
 
 // CreateDispatchGroupRequest represents payload from Admin to dispatch single/bulk orders
