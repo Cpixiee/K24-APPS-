@@ -134,7 +134,7 @@ export default function CreateOrderPage() {
     const z2 = mitraProfile.motor_zona2 || 25000
     const z3 = mitraProfile.motor_zona3 || 30000
     const list = [
-      { key: 'zona', label: 'Skema Zona (Surabaya)', valLabel: `Z1: ${formatRp(z1)} | Z2: ${formatRp(z2)} | Z3: ${formatRp(z3)}`, val: z1, unit: '/zona' },
+      { key: 'zona', label: 'Skema Zona (Surabaya)', valLabel: `Z1: ${formatRp(z1)} | Z2: ${formatRp(z2)} | Z3: ${formatRp(z3)} | Z4: Driver Flat Rp 26k | Z5: Driver Flat Rp 30k`, val: z1, unit: '/zona' },
       { key: 'km', label: 'Skema KM', valLabel: formatRp(mitraProfile.motor_km), val: mitraProfile.motor_km, unit: '/km' },
       { key: 'titik', label: 'Skema Titik', valLabel: formatRp(mitraProfile.motor_titik), val: mitraProfile.motor_titik, unit: '/titik' },
       { key: 'dimensi', label: 'Skema Dimensi', valLabel: formatRp(mitraProfile.motor_dimensi), val: mitraProfile.motor_dimensi, unit: '/dm³' },
@@ -888,6 +888,8 @@ export default function CreateOrderPage() {
                                   previewItem.zona === 1 ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" :
                                   previewItem.zona === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" :
                                   previewItem.zona === 3 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" :
+                                  previewItem.zona === 4 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" :
+                                  previewItem.zona === 5 ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" :
                                   "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
                                 )}>
                                   {previewItem.rate_label}
@@ -1014,7 +1016,15 @@ export default function CreateOrderPage() {
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold truncate text-foreground">{rec.nama_apotek}</p>
                             {rec.zona && rec.zona > 0 ? (
-                              <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                              <span className={cn(
+                                "inline-flex items-center px-1.5 py-0.2 text-[9px] font-bold rounded",
+                                rec.zona === 1 ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" :
+                                rec.zona === 2 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" :
+                                rec.zona === 3 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" :
+                                rec.zona === 4 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" :
+                                rec.zona === 5 ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300" :
+                                "bg-purple-100 text-purple-700"
+                              )}>
                                 Zona {rec.zona}
                               </span>
                             ) : (

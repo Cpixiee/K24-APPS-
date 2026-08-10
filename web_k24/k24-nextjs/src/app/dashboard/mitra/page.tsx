@@ -427,7 +427,7 @@ export default function MitraPage() {
                         Tarif Skema Zona (Surabaya / Sidoarjo) - Tagihan Mitra
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Isikan tarif yang ditagihkan ke mitra. Pendapatan bersih driver otomatis diset: <strong>Zona 1 = Rp 10.500</strong> | <strong>Zona 2 = Rp 17.500</strong> | <strong>Zona 3 = Rp 24.500</strong> | <strong>Non-Zona = Rp 1.750/KM</strong>.
+                        Isikan tarif yang ditagihkan ke mitra. Pendapatan bersih driver otomatis diset: <strong>Zona 1 = Rp 10.500</strong> | <strong>Zona 2 = Rp 17.500</strong> | <strong>Zona 3 = Rp 24.500</strong> | <strong>Zona 4 = Rp 26.000 (Flat)</strong> | <strong>Zona 5 = Rp 30.000 (Flat)</strong> | <strong>Non-Zona = Rp 1.750/KM</strong>.
                       </p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -220,8 +220,6 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		TotalPrice: 0,
 	}
 
-	lastZonedLat, lastZonedLng := originLat, originLong
-
 	for i, r := range sorted {
 		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
 		var rowPrice float64
@@ -237,26 +235,49 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 				case 1:
 					rowPrice = fullRates.MotorZona1
 					driverFee = 10500.0
+					rateLabel = "Zona 1"
 				case 2:
 					rowPrice = fullRates.MotorZona2
 					driverFee = 17500.0
+					rateLabel = "Zona 2"
 				case 3:
 					rowPrice = fullRates.MotorZona3
 					driverFee = 24500.0
+					rateLabel = "Zona 3"
+				case 4:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = 26000.0
+					rateLabel = "Zona 4"
+				case 5:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = 30000.0
+					rateLabel = "Zona 5"
+				default:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = distKm * 1750.0
+					rateLabel = fmt.Sprintf("Zona %d", matchedZona)
 				}
-				rateLabel = fmt.Sprintf("Zona %d", matchedZona)
-				lastZonedLat, lastZonedLng = r.latitude, r.longitude
 			} else {
-				// Outside zone database: automatically switch to KM rate calculated from last zoned stop
-				distFromLast, _ := calculateDistance(h.DB, lastZonedLat, lastZonedLng, r.latitude, r.longitude)
+				// Outside zone database: KM rate calculated from Pickup Point (originLat, originLong)
 				kmRate := fullRates.MotorKm
-				if kmRate == 0 {
-					kmRate = 2000
+				if kmRate <= 1750 {
+					kmRate = 2500.0
 				}
-				rowPrice = distFromLast * kmRate
-				driverFee = distFromLast * 1750.0
-				rateLabel = fmt.Sprintf("Tarif KM (%.1f km)", distFromLast)
-				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+				rowPrice = distKm * kmRate
+				driverFee = distKm * 1750.0
+				rateLabel = fmt.Sprintf("Tarif KM (%.1f km)", distKm)
 			}
 		} else {
 			rowPrice = calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
@@ -368,7 +389,6 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 	sorted := sortBulkItemsNearestNeighbor(originLat, originLong, resolved)
 
 	savedOrders := []models.Order{}
-	lastZonedLat, lastZonedLng := originLat, originLong
 
 	for i, r := range sorted {
 		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
@@ -388,17 +408,35 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 				case 3:
 					rowPrice = fullRates.MotorZona3
 					driverFee = 24500.0
+				case 4:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = 26000.0
+				case 5:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = 30000.0
+				default:
+					kmRate := fullRates.MotorKm
+					if kmRate <= 1750 {
+						kmRate = 2500.0
+					}
+					rowPrice = distKm * kmRate
+					driverFee = distKm * 1750.0
 				}
-				lastZonedLat, lastZonedLng = r.latitude, r.longitude
 			} else {
-				distFromLast, _ := calculateDistance(h.DB, lastZonedLat, lastZonedLng, r.latitude, r.longitude)
 				kmRate := fullRates.MotorKm
-				if kmRate == 0 {
-					kmRate = 2000
+				if kmRate <= 1750 {
+					kmRate = 2500.0
 				}
-				rowPrice = distFromLast * kmRate
-				driverFee = distFromLast * 1750.0
-				lastZonedLat, lastZonedLng = r.latitude, r.longitude
+				rowPrice = distKm * kmRate
+				driverFee = distKm * 1750.0
 			}
 		} else {
 			rowPrice = calcRowPrice(req.RateType, activeRate, distKm, r.item.KubikAktual, r.item.BeratAktual, i)
