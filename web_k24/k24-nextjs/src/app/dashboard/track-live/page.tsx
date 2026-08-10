@@ -2,12 +2,22 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { adminAPI } from '@/lib/api'
-import LiveTrackingMap, { TrackingDriver, TrackingStop } from '@/components/tracking/LiveTrackingMap'
+import { TrackingDriver, TrackingStop } from '@/components/tracking/LiveTrackingMap'
 import {
   Radio, MapPin, Navigation, Clock, CheckCircle2, AlertCircle,
   Truck, Search, Share2, Printer, RefreshCw, FileText, Store, User, Phone, Check, ChevronRight
 } from 'lucide-react'
+
+const LiveTrackingMap = dynamic(() => import('@/components/tracking/LiveTrackingMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-white">
+      Memuat Peta Radar Live...
+    </div>
+  ),
+})
 
 interface OrderData {
   id: number

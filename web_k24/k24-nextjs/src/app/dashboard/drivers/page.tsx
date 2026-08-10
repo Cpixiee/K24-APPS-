@@ -300,13 +300,22 @@ function DriversPageContent() {
           </button>
           <button
             onClick={() => handleTabChange('unapproved')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+            className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all flex items-center gap-2 ${
               activeTab === 'unapproved'
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Persetujuan Pendaftaran ({drivers.filter(d => !d.is_approved).length})
+            Persetujuan Pendaftaran
+            {drivers.filter((d) => !d.is_approved).length > 0 ? (
+              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-500 text-white animate-pulse">
+                {drivers.filter((d) => !d.is_approved).length} NEW
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-muted text-muted-foreground">
+                0
+              </span>
+            )}
           </button>
         </div>
       </div>

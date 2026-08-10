@@ -249,8 +249,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			isActive = false
 			rating = 5.00
 			vehicleType = "motor"
-			isApproved = true // auto approve auto-generated ones
-			_, _ = h.DB.Exec(ctx, "INSERT INTO driver_profiles (user_id, plate_number, is_active, rating, vehicle_type, is_approved) VALUES ($1, $2, $3, $4, $5, true)", user.ID, plateNumber, isActive, rating, vehicleType)
+			isApproved = false // Require admin approval by default
+			_, _ = h.DB.Exec(ctx, "INSERT INTO driver_profiles (user_id, plate_number, is_active, rating, vehicle_type, is_approved) VALUES ($1, $2, $3, $4, $5, false)", user.ID, plateNumber, isActive, rating, vehicleType)
 		} else if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Status:  "error",
