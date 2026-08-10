@@ -17,15 +17,15 @@ import (
 func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 	ctx := context.Background()
 
-	// Select orders waiting for dispatch — LEFT JOIN alamat_penerima for proximity clustering
+	// Select orders waiting for dispatch — scalar subqueries for lat/lng to prevent join duplication
 	query := `
 	SELECT o.id, o.order_number, COALESCE(o.parent_order_number, '') as parent_order_number, COALESCE(o.dispatch_id, '') as dispatch_id, o.mitra_id, COALESCE(u.name, 'Mitra Apotek') as mitra_name,
 	       o.pharmacy_name, o.pharmacy_address, o.delivery_address,
 	       o.customer_name, o.customer_phone, o.medicine_summary, o.delivery_fee, o.created_at,
-	       COALESCE(ap.latitude, 0.0) as lat, COALESCE(ap.longitude, 0.0) as lng
+	       COALESCE((SELECT ap.latitude FROM alamat_penerima ap WHERE LOWER(TRIM(ap.nama_apotek)) = LOWER(TRIM(o.customer_name)) LIMIT 1), 0.0) as lat,
+	       COALESCE((SELECT ap.longitude FROM alamat_penerima ap WHERE LOWER(TRIM(ap.nama_apotek)) = LOWER(TRIM(o.customer_name)) LIMIT 1), 0.0) as lng
 	FROM orders o
 	LEFT JOIN users u ON o.mitra_id = u.id
-	LEFT JOIN alamat_penerima ap ON LOWER(TRIM(ap.nama_apotek)) = LOWER(TRIM(o.customer_name)) AND LOWER(TRIM(ap.alamat_lengkap)) = LOWER(TRIM(o.delivery_address))
 	WHERE (o.driver_id IS NULL OR o.driver_id = 0) 
 	  AND (o.dispatch_id IS NULL OR o.dispatch_id = '') 
 	  AND o.status = 'PENDING'
