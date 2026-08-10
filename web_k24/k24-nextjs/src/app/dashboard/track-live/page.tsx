@@ -7,13 +7,13 @@ import { adminAPI } from '@/lib/api'
 import { TrackingDriver, TrackingStop } from '@/components/tracking/LiveTrackingMap'
 import {
   Radio, MapPin, Navigation, Clock, CheckCircle2, AlertCircle,
-  Truck, Search, Share2, Printer, RefreshCw, FileText, Store, User, Phone, Check, ChevronRight
+  Truck, Search, Share2, RefreshCw, FileText, Store, User, Phone, ChevronRight
 } from 'lucide-react'
 
 const LiveTrackingMap = dynamic(() => import('@/components/tracking/LiveTrackingMap'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-slate-900 text-xs text-white">
+    <div className="flex h-full w-full items-center justify-center bg-card text-xs text-muted-foreground">
       Memuat Peta Radar Live...
     </div>
   ),
@@ -29,21 +29,20 @@ interface OrderData {
   customer_name: string
   customer_phone: string
   medicine_summary: string
-  driver_fee?: number
+  delivery_fee: number
+  driver_fee: number
   created_at: string
   completed_at?: string
   pharmacy_lat?: number
   pharmacy_lng?: number
   customer_lat?: number
   customer_lng?: number
-  dispatch_id?: string
   driver?: {
     id: number
     name: string
     phone: string
     plate_number: string
     vehicle_type: string
-    is_active: boolean
   }
 }
 
@@ -54,13 +53,14 @@ function TrackLiveContent() {
   const [orders, setOrders] = useState<OrderData[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null)
-  const [liveTrackData, setLiveTrackData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Load orders list
+  // Live real-time location state
+  const [liveTrackData, setLiveTrackData] = useState<any>(null)
+
   const fetchOrders = async () => {
     setLoading(true)
     setError(null)
@@ -89,24 +89,24 @@ function TrackLiveContent() {
     fetchOrders()
   }, [initialOrderId])
 
-  // Load live tracking details when selected order changes
+  // Polling for selected order tracking position
   useEffect(() => {
     if (!selectedOrder) return
 
-    const fetchLiveTrack = async () => {
-      const dispId = selectedOrder.dispatch_id || selectedOrder.order_number
+    const fetchLiveTracking = async () => {
       try {
-        const res = await adminAPI.getDispatchLiveTracking(dispId)
+        const res = await adminAPI.getDispatchLiveTracking(String(selectedOrder.id))
         if (res.data?.data) {
           setLiveTrackData(res.data.data)
         }
-      } catch (_) {
-        // Fallback mock live data if dispatch tracking endpoint is single-stop
-        setLiveTrackData(null)
+      } catch (err) {
+        // Fallback silently if dispatch tracking API is not yet active for this specific order
       }
     }
 
-    fetchLiveTrack()
+    fetchLiveTracking()
+    const interval = setInterval(fetchLiveTracking, 10000) // Poll every 10s
+    return () => clearInterval(interval)
   }, [selectedOrder])
 
   const filteredOrders = orders.filter((o) => {
@@ -203,24 +203,24 @@ function TrackLiveContent() {
     : []
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 p-6 text-white shadow-xl border border-emerald-800/40">
-        <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30">
-            <Radio className="h-3.5 w-3.5 animate-pulse text-emerald-400" />
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
+      {/* Header Banner (Clean Modern White Theme) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl bg-card p-6 border border-border shadow-sm">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <Radio className="h-3.5 w-3.5 animate-pulse text-emerald-600 dark:text-emerald-400" />
             LIVE RADAR LOGISTIK
           </div>
-          <h2 className="text-2xl font-black tracking-tight text-white">Halaman Lacak Live & Laporan Pengiriman</h2>
-          <p className="text-xs text-slate-300">
-            Pantau pergerakan armada kurir, posisi titik pengantaran obat, dan log status pengiriman secara *real-time*.
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Halaman Lacak Live & Laporan Pengiriman</h2>
+          <p className="text-xs text-muted-foreground">
+            Pantau pergerakan armada kurir, posisi titik pengantaran obat, dan log status pengiriman secara real-time.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={fetchOrders}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-800/90 px-4 py-2.5 text-xs font-semibold text-white border border-slate-700 hover:bg-slate-700 transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-background px-4 py-2.5 text-xs font-semibold text-foreground border border-border hover:bg-accent transition"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh Data
@@ -228,7 +228,7 @@ function TrackLiveContent() {
           <button
             onClick={handleShareReport}
             disabled={!selectedOrder}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/30 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-sm disabled:opacity-50"
           >
             <Share2 className="h-4 w-4" />
             Bagikan Laporan
@@ -261,7 +261,7 @@ function TrackLiveContent() {
           <div className="lg:col-span-4 space-y-4">
             <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold flex items-center gap-2">
+                <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
                   <FileText className="h-4 w-4 text-emerald-600" />
                   Daftar Order Lacak ({filteredOrders.length})
                 </h3>
@@ -283,19 +283,19 @@ function TrackLiveContent() {
               <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 text-xs font-semibold">
                 <button
                   onClick={() => setFilterStatus('ALL')}
-                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'ALL' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'ALL' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   Semua
                 </button>
                 <button
                   onClick={() => setFilterStatus('ACTIVE')}
-                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'ACTIVE' ? 'bg-background shadow text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'ACTIVE' ? 'bg-background shadow-sm text-emerald-600 font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   Aktif
                 </button>
                 <button
                   onClick={() => setFilterStatus('COMPLETED')}
-                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'COMPLETED' ? 'bg-background shadow text-blue-600' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`py-1.5 rounded-lg text-center transition ${filterStatus === 'COMPLETED' ? 'bg-background shadow-sm text-blue-600 font-bold' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   Selesai
                 </button>
@@ -314,8 +314,8 @@ function TrackLiveContent() {
                         onClick={() => handleSelectOrder(order.id)}
                         className={`w-full text-left p-3.5 rounded-xl border transition-all ${
                           isSelected
-                            ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500'
-                            : 'border-border bg-card hover:border-emerald-300/60 hover:bg-accent/40'
+                            ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-500'
+                            : 'border-border bg-card hover:border-emerald-400/50 hover:bg-accent/40'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2 mb-1">
@@ -359,53 +359,53 @@ function TrackLiveContent() {
                     <div className="flex items-center justify-between">
                       {/* Step 1 */}
                       <div className="flex flex-col items-center gap-1.5 z-10">
-                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow ${getStatusStep(selectedOrder.status) >= 1 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ${getStatusStep(selectedOrder.status) >= 1 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
                           1
                         </div>
-                        <span className="text-[11px] font-bold text-center">Apotek</span>
+                        <span className="text-[11px] font-bold text-center text-foreground">Apotek</span>
                       </div>
 
                       <div className={`h-1 flex-1 mx-2 rounded ${getStatusStep(selectedOrder.status) >= 2 ? 'bg-emerald-500' : 'bg-muted'}`} />
 
                       {/* Step 2 */}
                       <div className="flex flex-col items-center gap-1.5 z-10">
-                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow ${getStatusStep(selectedOrder.status) >= 2 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ${getStatusStep(selectedOrder.status) >= 2 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
                           2
                         </div>
-                        <span className="text-[11px] font-bold text-center">Kurir Jalan</span>
+                        <span className="text-[11px] font-bold text-center text-foreground">Kurir Jalan</span>
                       </div>
 
                       <div className={`h-1 flex-1 mx-2 rounded ${getStatusStep(selectedOrder.status) >= 3 ? 'bg-emerald-500' : 'bg-muted'}`} />
 
                       {/* Step 3 */}
                       <div className="flex flex-col items-center gap-1.5 z-10">
-                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow ${getStatusStep(selectedOrder.status) >= 3 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ${getStatusStep(selectedOrder.status) >= 3 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
                           3
                         </div>
-                        <span className="text-[11px] font-bold text-center">Tiba Tujuan</span>
+                        <span className="text-[11px] font-bold text-center text-foreground">Tiba Tujuan</span>
                       </div>
 
                       <div className={`h-1 flex-1 mx-2 rounded ${getStatusStep(selectedOrder.status) >= 4 ? 'bg-emerald-500' : 'bg-muted'}`} />
 
                       {/* Step 4 */}
                       <div className="flex flex-col items-center gap-1.5 z-10">
-                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow ${getStatusStep(selectedOrder.status) >= 4 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-xs shadow-sm ${getStatusStep(selectedOrder.status) >= 4 ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-muted text-muted-foreground'}`}>
                           4
                         </div>
-                        <span className="text-[11px] font-bold text-center">POD Selesai</span>
+                        <span className="text-[11px] font-bold text-center text-foreground">POD Selesai</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Leaflet Live Map Card */}
-                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-md">
-                  <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold">
-                      <Navigation className="h-4 w-4 text-emerald-400" />
+                {/* Leaflet Live Map Card (Clean White Header Theme) */}
+                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <div className="bg-card border-b border-border px-5 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                      <Navigation className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       RUTE RADAR DARI APOTEK KE ALAMAT TUJUAN
                     </div>
-                    <span className="text-[11px] text-slate-400">GPS Tracker Realtime</span>
+                    <span className="text-[11px] font-semibold text-muted-foreground">GPS Tracker Realtime</span>
                   </div>
 
                   <div className="h-[380px] w-full">
