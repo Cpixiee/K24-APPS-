@@ -256,7 +256,8 @@ type Recipient struct {
 	Zona          int     `json:"zona"`
 }
 
-type CalculateOrderRequest struct {
+type CalculateOrderPriceRequest struct {
+	MitraID  int                  `json:"mitra_id,omitempty"`
 	Armada   string               `json:"armada" binding:"required"`
 	RateType string               `json:"rate_type" binding:"required"`
 	Items    []CalculateOrderItem `json:"items" binding:"required"`
@@ -288,6 +289,7 @@ type CalculatedItemResult struct {
 }
 
 type CreateBulkOrdersRequest struct {
+	MitraID  int                  `json:"mitra_id,omitempty"`
 	Armada   string               `json:"armada" binding:"required"`
 	RateType string               `json:"rate_type" binding:"required"`
 	Items    []BulkOrderItemInput `json:"items" binding:"required"`

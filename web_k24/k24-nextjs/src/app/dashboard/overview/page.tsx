@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
 import {
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip
@@ -75,11 +76,15 @@ const formatRp = (n?: number) => n != null ? `Rp ${n.toLocaleString('id-ID')}` :
 
 export default function OverviewPage() {
   const router = useRouter()
+  const { user, impersonatedMitra } = useAuth()
+  const isMitra = user?.role === 'MITRA' || !!impersonatedMitra
+
   const [stats, setStats] = useState<Stats | null>(null)
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [invoices, setInvoices] = useState<FlatInvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [periodFilter, setPeriodFilter] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -104,6 +109,33 @@ export default function OverviewPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Filter items by date period
+  const filterByPeriod = useCallback(<T extends { created_at?: string }>(items: T[]) => {
+    if (periodFilter === 'all') return items
+    const now = new Date()
+    return items.filter((item) => {
+      if (!item.created_at) return true
+      const d = new Date(item.created_at)
+      if (periodFilter === 'day') {
+        return d.toDateString() === now.toDateString()
+      }
+      if (periodFilter === 'week') {
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        return d >= oneWeekAgo
+      }
+      if (periodFilter === 'month') {
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      }
+      if (periodFilter === 'year') {
+        return d.getFullYear() === now.getFullYear()
+      }
+      return true
+    })
+  }, [periodFilter])
+
+  const filteredOrders = useMemo(() => filterByPeriod(orders), [orders, filterByPeriod])
+  const filteredInvoices = useMemo(() => filterByPeriod(invoices), [invoices, filterByPeriod])
 
   // Leaflet Map Initialization
   useEffect(() => {
@@ -200,21 +232,28 @@ export default function OverviewPage() {
     }
   }, [loading])
 
-  const totalOrders = stats?.total_orders || 0
+  const totalOrders = filteredOrders.length || stats?.total_orders || 0
   const totalDrivers = stats?.total_drivers || 0
   const totalMitra = stats?.total_mitra || 0
-  const totalInvoices = stats?.total_invoices || (totalOrders > 0 ? totalOrders * 2 : 0)
-  const pendingDispatch = stats?.pending_dispatch || 0
-  const activeDispatch = stats?.active_dispatch || 0
-  const completedOrders = stats?.completed_orders || 0
-  const cancelledOrders = stats?.cancelled_orders || 0
+  const totalInvoices = filteredInvoices.length || (totalOrders > 0 ? totalOrders * 2 : 0)
+  const pendingDispatch = filteredOrders.filter(o => !o.is_dispatched || o.status === 'WAITING_FOR_PICKUP').length
+  const activeDispatch = filteredOrders.filter(o => o.status === 'DELIVERING' || o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE').length
+  const completedOrders = filteredOrders.filter(o => o.status === 'COMPLETED').length
+  const cancelledOrders = filteredOrders.filter(o => o.status === 'CANCELLED').length
 
   const getPct = (val: number) => totalOrders === 0 ? 0 : Math.round((val / totalOrders) * 100)
 
-  const kpiCards = [
+  // Distinct KPI cards: Admin gets (Total Driver, Total Invoice, Total Mitra, Perlu Dispatch)
+  // Mitra gets (Total Order, Total Invoice, Sedang Dikirim, Selesai Diantar)
+  const kpiCards = isMitra ? [
+    { title: 'Total Order', value: totalOrders, icon: ShoppingBag, subtitle: 'Total titik alamat order', growth: 15.3, positive: true },
+    { title: 'Total Invoice', value: totalInvoices, icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
+    { title: 'Sedang Dikirim', value: activeDispatch, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Selesai Diantar', value: completedOrders, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
+  ] : [
     { title: 'Total Driver', value: totalDrivers, icon: Truck, subtitle: 'Aktif saat ini', growth: 8.2, positive: true },
     { title: 'Total Invoice', value: totalInvoices, icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Total Order', value: totalOrders, icon: ShoppingBag, subtitle: 'Total titik alamat order', growth: 15.3, positive: true },
+    { title: 'Total Mitra', value: totalMitra, icon: Store, subtitle: 'Apotek mitra terdaftar', growth: 15.3, positive: true },
     { title: 'Perlu Dispatch', value: pendingDispatch, icon: AlertCircle, subtitle: 'Menunggu penugasan', isLive: true },
   ]
 
@@ -248,10 +287,20 @@ export default function OverviewPage() {
           <p className="text-sm text-muted-foreground mt-0.5">Status, pertumbuhan, dan logistik pengiriman apotek saat ini.</p>
         </div>
         
-        <div className="flex items-center gap-3 bg-card border border-border px-3.5 py-2 rounded-xl self-start md:self-auto shadow-sm text-xs font-semibold text-foreground">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span>14 Juli 2026</span>
-          <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
+        <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-xl self-start md:self-auto shadow-xs text-xs font-semibold text-foreground">
+          <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <span className="text-muted-foreground hidden sm:inline">Periode:</span>
+          <select
+            value={periodFilter}
+            onChange={(e) => setPeriodFilter(e.target.value as any)}
+            className="bg-transparent outline-none cursor-pointer font-bold text-foreground pr-1"
+          >
+            <option value="all">Semua Waktu</option>
+            <option value="day">Hari Ini (Daily)</option>
+            <option value="week">Minggu Ini (Weekly)</option>
+            <option value="month">Bulan Ini (Monthly)</option>
+            <option value="year">Tahun Ini (Yearly)</option>
+          </select>
         </div>
       </div>
 

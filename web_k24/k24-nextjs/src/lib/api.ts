@@ -5,7 +5,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8087'
 
 // Client-side axios instance (uses localStorage token, for client components)
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: `${BASE_URL}/api`,
   timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -50,6 +50,7 @@ export const adminAPI = {
   getDriverDocument: (id: number, type: string) => apiClient.get(`/admin/drivers/${id}/document?type=${type}`),
   getMitra: () => apiClient.get('/admin/mitra'),
   createMitra: (data: unknown) => apiClient.post('/admin/mitra', data),
+  impersonateMitra: (mitraId: number) => apiClient.post(`/admin/mitra/${mitraId}/impersonate`),
   createOrder: (data: unknown) => apiClient.post('/admin/orders', data),
   getMitraProfile: () => apiClient.get('/admin/mitra/profile'),
   getRecipients: () => apiClient.get('/admin/recipients'),
@@ -58,6 +59,7 @@ export const adminAPI = {
   getOrders: () => apiClient.get('/admin/orders'),
   getFlatInvoices: (date?: string) => apiClient.get(`/admin/orders/invoices-flat${date ? `?date=${date}` : ''}`),
   getOrderDetail: (dispatchId: string | number) => apiClient.get(`/admin/orders/${dispatchId}`),
+  deleteOrder: (id: string | number) => apiClient.delete(`/admin/orders/${id}`),
   approveDriver: (id: number) => apiClient.post(`/admin/drivers/${id}/approve`),
   rejectDriver: (id: number) => apiClient.post(`/admin/drivers/${id}/reject`),
   approveRejectOrder: (id: number, approve: boolean) => apiClient.post(`/admin/orders/${id}/approve-reject`, { approve }),
@@ -65,6 +67,7 @@ export const adminAPI = {
   getPendingDispatchOrders: () => apiClient.get('/admin/dispatch/orders'),
   getDispatchDrivers: (vehicleType: string) => apiClient.get(`/admin/dispatch/drivers?vehicle_type=${vehicleType}`),
   createDispatchGroup: (data: unknown) => apiClient.post('/admin/dispatch', data),
+  cancelDriverAssignment: (dispatchId: string | number) => apiClient.post(`/admin/dispatch/${dispatchId}/cancel`),
   getDispatchLiveTracking: (dispatchId: string | number) => apiClient.get(`/admin/dispatch/${dispatchId}/live-track`),
   
   // Public Pharmacist & Client workflows

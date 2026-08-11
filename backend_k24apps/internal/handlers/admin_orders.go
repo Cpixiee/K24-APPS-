@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -100,54 +100,31 @@ func sortBulkItemsNearestNeighbor(originLat, originLng float64, items []resolved
 		return items
 	}
 
-	// Group items by zone hierarchy (1: Zona 1, 2: Zona 2, 3: Zona 3, 4: Zona 4, 5: Zona 5, 99: Non-Zona)
-	groups := make(map[int][]resolvedBulkItem)
-	for _, item := range items {
-		z := item.zona
-		if z <= 0 {
-			z = 99
-		}
-		groups[z] = append(groups[z], item)
-	}
-
-	// Dynamically collect all zone keys to guarantee no zone items are ever dropped
-	orderedZones := make([]int, 0, len(groups))
-	for z := range groups {
-		orderedZones = append(orderedZones, z)
-	}
-	sort.Ints(orderedZones)
+	remaining := make([]resolvedBulkItem, len(items))
+	copy(remaining, items)
 	sorted := make([]resolvedBulkItem, 0, len(items))
+
 	currLat, currLng := originLat, originLng
 
-	for _, z := range orderedZones {
-		groupItems, exists := groups[z]
-		if !exists || len(groupItems) == 0 {
-			continue
-		}
+	for len(remaining) > 0 {
+		bestIdx := 0
+		bestDist := math.MaxFloat64
 
-		remaining := make([]resolvedBulkItem, len(groupItems))
-		copy(remaining, groupItems)
-
-		for len(remaining) > 0 {
-			bestIdx := 0
-			bestDist := math.MaxFloat64
-
-			for i, r := range remaining {
-				dist := haversineDist(currLat, currLng, r.latitude, r.longitude)
-				if dist < bestDist {
-					bestDist = dist
-					bestIdx = i
-				}
+		for i, r := range remaining {
+			dist := haversineDist(currLat, currLng, r.latitude, r.longitude)
+			if dist < bestDist {
+				bestDist = dist
+				bestIdx = i
 			}
-
-			chosen := remaining[bestIdx]
-			sorted = append(sorted, chosen)
-
-			currLat = chosen.latitude
-			currLng = chosen.longitude
-
-			remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
 		}
+
+		chosen := remaining[bestIdx]
+		sorted = append(sorted, chosen)
+
+		currLat = chosen.latitude
+		currLng = chosen.longitude
+
+		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
 	}
 
 	return sorted
@@ -166,7 +143,7 @@ func haversineDist(lat1, lon1, lat2, lon2 float64) float64 {
 
 // CalculateOrderPrice pre-calculates pricing for proposed delivery stops.
 func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
-	var req models.CalculateOrderRequest
+	var req models.CalculateOrderPriceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
 		return
@@ -178,6 +155,9 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		return
 	}
 	userID := userIDVal.(int)
+	if req.MitraID > 0 {
+		userID = req.MitraID
+	}
 	ctx := context.Background()
 
 	fullRates := loadMitraFullRates(h.DB, ctx, userID)
@@ -226,8 +206,15 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		TotalPrice: 0,
 	}
 
+	var prevLat = originLat
+	var prevLng = originLong
+
 	for i, r := range sorted {
-		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
+		distKm, _ := calculateDistance(h.DB, prevLat, prevLng, r.latitude, r.longitude)
+		// Update previous leg coordinates for next stop distance calculation
+		prevLat = r.latitude
+		prevLng = r.longitude
+
 		var rowPrice float64
 		var matchedZona int
 		var rateLabel string
@@ -276,7 +263,7 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 					rateLabel = fmt.Sprintf("Zona %d", matchedZona)
 				}
 			} else {
-				// Outside zone database: KM rate calculated from Pickup Point (originLat, originLong)
+				// Outside zone database: KM rate calculated from Previous Point
 				kmRate := fullRates.MotorKm
 				if kmRate <= 1750 {
 					kmRate = 2500.0
@@ -324,6 +311,9 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 		return
 	}
 	userID := userIDVal.(int)
+	if req.MitraID > 0 {
+		userID = req.MitraID
+	}
 	ctx := context.Background()
 
 	// Load mitra pickup location
@@ -331,11 +321,11 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 	var originLat, originLong float64
 	if err := h.DB.QueryRow(ctx,
 		"SELECT pickup_name, alamat_lengkap, pickup_lat, pickup_long FROM mitra_profiles WHERE user_id = $1", userID,
-	).Scan(&originName, &originAddress, &originLat, &originLong); err != nil {
-		originName = "K-24 Hub"
-		originAddress = "Jl. Kaliurang KM 5, Yogyakarta"
-		originLat = -7.782889
-		originLong = 110.377042
+	).Scan(&originName, &originAddress, &originLat, &originLong); err != nil || originLat == 0 || originLong == 0 {
+		originName = "PT K-24 Indonesia Cabang Jakarta"
+		originAddress = "Jl. Raya Pasar Minggu No. 28, Pasar Minggu, Jakarta Selatan"
+		originLat = -6.2019957
+		originLong = 106.8551888
 	}
 
 	tx, err := h.DB.Begin(ctx)
@@ -396,8 +386,13 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 
 	savedOrders := []models.Order{}
 
+	var prevLat = originLat
+	var prevLng = originLong
+
 	for i, r := range sorted {
-		distKm, _ := calculateDistance(h.DB, originLat, originLong, r.latitude, r.longitude)
+		distKm, _ := calculateDistance(h.DB, prevLat, prevLng, r.latitude, r.longitude)
+		prevLat = r.latitude
+		prevLng = r.longitude
 		var rowPrice float64
 		rec, _ := findRecipient(h.DB, r.item.NamaApotek, r.item.AlamatLengkap)
 		var driverFee float64
@@ -798,7 +793,7 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 	FROM orders o
 	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
 	LEFT JOIN driver_profiles dp ON dp.user_id = o.driver_id
-	WHERE o.parent_order_number = $1 OR o.dispatch_id = $1`
+	WHERE (o.dispatch_id IS NOT NULL AND o.dispatch_id != '' AND o.dispatch_id = $1) OR ((o.dispatch_id IS NULL OR o.dispatch_id = '') AND o.parent_order_number = $1) OR o.order_number = $1`
 	if role == "MITRA" {
 		query += ` AND o.mitra_id = $2`
 	}
@@ -946,6 +941,77 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Data: resp})
 }
 
+// DeleteOrder deletes an order or dispatch group by ID / dispatch_id / parent_order_number.
+func (h *AdminHandler) DeleteOrder(c *gin.Context) {
+	targetID := c.Param("id")
+	ctx := context.Background()
+	roleVal, _ := c.Get("role")
+	role := roleVal.(string)
+	userIDVal, _ := c.Get("user_id")
+	userID := userIDVal.(int)
+
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memulai transaksi database"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Build WHERE clause for matching orders
+	var orderIDs []int
+	var selectQuery string
+	var args []interface{}
+
+	if role == "MITRA" {
+		selectQuery = `SELECT id FROM orders WHERE (dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1 OR id::text = $1) AND mitra_id = $2;`
+		args = append(args, targetID, userID)
+	} else {
+		selectQuery = `SELECT id FROM orders WHERE (dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1 OR id::text = $1);`
+		args = append(args, targetID)
+	}
+
+	rows, err := tx.Query(ctx, selectQuery, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mencari order untuk dihapus: " + err.Error()})
+		return
+	}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			orderIDs = append(orderIDs, id)
+		}
+	}
+	rows.Close()
+
+	if len(orderIDs) == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Order tidak ditemukan atau Anda tidak memiliki hak akses"})
+		return
+	}
+
+	// 1. Delete details from dispatch_id_detail
+	_, _ = tx.Exec(ctx, `DELETE FROM dispatch_id_detail WHERE order_id = ANY($1);`, orderIDs)
+
+	// 2. Clean empty dispatch_groups
+	_, _ = tx.Exec(ctx, `DELETE FROM dispatch_groups WHERE dispatch_number = $1 OR id NOT IN (SELECT DISTINCT dispatch_group_id FROM dispatch_id_detail WHERE dispatch_group_id IS NOT NULL);`, targetID)
+
+	// 3. Delete notifications
+	_, _ = tx.Exec(ctx, `DELETE FROM notifications WHERE message ILIKE '%' || $1 || '%';`, targetID)
+
+	// 4. Delete from orders table
+	_, err = tx.Exec(ctx, `DELETE FROM orders WHERE id = ANY($1);`, orderIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menghapus order: " + err.Error()})
+		return
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan perubahan ke database"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: fmt.Sprintf("Order %s berhasil dihapus", targetID)})
+}
+
 // ─── Helper functions shared across order handlers ────────────────────────────
 
 func calcRowPrice(rateType string, activeRate, distKm float64, kubik, berat *float64, index int) float64 {
@@ -999,8 +1065,8 @@ func parseArmadaRate(summary string) (armada, rate string) {
 }
 
 func loadMitraRates(db *pgxpool.Pool, ctx context.Context, userID int, armada, rateType string) (originLat, originLong, activeRate float64) {
-	originLat = -7.782889
-	originLong = 110.377042
+	originLat = -6.2019957
+	originLong = 106.8551888
 
 	var motorDimensi, motorKm, motorTitik, motorBerat *float64
 	var mobilDimensi, mobilKm, mobilTitik, mobilBerat, mobilLumpsum *float64
@@ -1096,24 +1162,41 @@ type MitraRates struct {
 
 func loadMitraFullRates(db *pgxpool.Pool, ctx context.Context, userID int) MitraRates {
 	rates := MitraRates{
-		OriginLat: -7.782889, OriginLong: 110.377042,
+		OriginLat: -6.2019957, OriginLong: 106.8551888,
 		MotorKm: 1750, MotorTitik: 10000, MotorDimensi: 1333.33, MotorBerat: 5000,
-		MotorZona1: 10500, MotorZona2: 17500, MotorZona3: 24500,
+		MotorZona1: 0, MotorZona2: 0, MotorZona3: 0,
 		MobilKm: 2500, MobilTitik: 12000, MobilDimensi: 1500, MobilBerat: 6000, MobilLumpsum: 700000,
 	}
 
+	var pLat, pLng *float64
+	var pName string
 	var mDim, mKm, mTit, mBer, mZ1, mZ2, mZ3 *float64
 	var mbDim, mbKm, mbTit, mbBer, mbLump *float64
 
 	_ = db.QueryRow(ctx, `
-	SELECT pickup_lat, pickup_long,
+	SELECT pickup_lat, pickup_long, COALESCE(pickup_name, ''),
 	       motor_dimensi, motor_km, motor_titik, motor_berat, motor_zona1, motor_zona2, motor_zona3,
 	       mobil_dimensi, mobil_km, mobil_titik, mobil_berat, mobil_lumpsum
 	FROM mitra_profiles WHERE user_id = $1;`, userID).Scan(
-		&rates.OriginLat, &rates.OriginLong,
+		&pLat, &pLng, &pName,
 		&mDim, &mKm, &mTit, &mBer, &mZ1, &mZ2, &mZ3,
 		&mbDim, &mbKm, &mbTit, &mbBer, &mbLump,
 	)
+
+	if pLat != nil && *pLat != 0 {
+		rates.OriginLat = *pLat
+	}
+	if pLng != nil && *pLng != 0 {
+		rates.OriginLong = *pLng
+	}
+
+	var userName, userEmail string
+	_ = db.QueryRow(ctx, "SELECT name, email FROM users WHERE id = $1", userID).Scan(&userName, &userEmail)
+	uStr := strings.ToLower(userName + " " + userEmail + " " + pName)
+	if strings.Contains(uStr, "jakarta") && (pLat == nil || *pLat == 0 || math.Abs(*pLat - -7.782889) < 0.01) {
+		rates.OriginLat = -6.2019957
+		rates.OriginLong = 106.8551888
+	}
 
 	if mDim != nil && *mDim > 0 { rates.MotorDimensi = *mDim }
 	if mKm != nil && *mKm > 0 { rates.MotorKm = *mKm }
@@ -1137,11 +1220,24 @@ func loadMitraFullRates(db *pgxpool.Pool, ctx context.Context, userID int) Mitra
 func findRecipient(db *pgxpool.Pool, namaApotek, alamatLengkap string) (*models.Recipient, error) {
 	ctx := context.Background()
 	var rec models.Recipient
+
+	// Strip parens like "(CV. AKS PURI)" for flexible name matching
+	cleanName := strings.TrimSpace(regexp.MustCompile(`\([^)]*\)`).ReplaceAllString(namaApotek, ""))
+
 	err := db.QueryRow(ctx, `
 	SELECT id, nama_apotek, alamat_lengkap, latitude, longitude, COALESCE(zona, 0)
 	FROM alamat_penerima 
-	WHERE LOWER(nama_apotek) = LOWER($1) OR LOWER(alamat_lengkap) = LOWER($2)
-	LIMIT 1;`, namaApotek, alamatLengkap).Scan(
+	WHERE LOWER(nama_apotek) = LOWER($1) 
+	   OR (LOWER($2) != '' AND LOWER(nama_apotek) = LOWER($2))
+	   OR LOWER(alamat_lengkap) = LOWER($3)
+	   OR (LOWER($2) != '' AND (LOWER(nama_apotek) LIKE '%' || LOWER($2) || '%' OR LOWER($2) LIKE '%' || LOWER(nama_apotek) || '%'))
+	ORDER BY 
+		CASE 
+			WHEN LOWER(nama_apotek) = LOWER($1) THEN 1 
+			WHEN LOWER(nama_apotek) = LOWER($2) THEN 2 
+			ELSE 3 
+		END
+	LIMIT 1;`, namaApotek, cleanName, alamatLengkap).Scan(
 		&rec.ID, &rec.NamaApotek, &rec.AlamatLengkap, &rec.Latitude, &rec.Longitude, &rec.Zona)
 	if err == nil {
 		return &rec, nil
@@ -1354,6 +1450,11 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	ctx := context.Background()
 	var distance float64
 
+	// If origin and destination are virtually identical (< 5 meters)
+	if math.Abs(originLat-destLat) < 0.00005 && math.Abs(originLng-destLng) < 0.00005 {
+		return 0.0, nil
+	}
+
 	// Check route cache using indexed range query (0.0001 deg is ~11 meters)
 	err := db.QueryRow(ctx, `
 	SELECT distance_km FROM route_cache 
@@ -1372,7 +1473,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	if hereKey != "" {
 		u := fmt.Sprintf("https://router.hereapi.com/v8/routes?transportMode=car&origin=%f,%f&destination=%f,%f&return=summary&apiKey=%s",
 			originLat, originLng, destLat, destLng, hereKey)
-		httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
+		httpClient := &http.Client{Timeout: 4000 * time.Millisecond}
 		resp, err := httpClient.Get(u)
 		if err == nil {
 			defer resp.Body.Close()
@@ -1399,7 +1500,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 		if apiKey != "" {
 			u := fmt.Sprintf("https://maps.googleapis.com/maps/api/distancematrix/json?origins=%f,%f&destinations=%f,%f&key=%s",
 				originLat, originLng, destLat, destLng, apiKey)
-			httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
+			httpClient := &http.Client{Timeout: 4000 * time.Millisecond}
 			resp, err := httpClient.Get(u)
 			if err == nil {
 				defer resp.Body.Close()
@@ -1429,7 +1530,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	if !apiSuccess {
 		u := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false",
 			originLng, originLat, destLng, destLat)
-		httpClient := &http.Client{Timeout: 1500 * time.Millisecond}
+		httpClient := &http.Client{Timeout: 4000 * time.Millisecond}
 		resp, err := httpClient.Get(u)
 		if err == nil {
 			defer resp.Body.Close()
@@ -1449,7 +1550,7 @@ func calculateDistance(db *pgxpool.Pool, originLat, originLng, destLat, destLng 
 	}
 
 	if !apiSuccess {
-		distance = haversineDistance(originLat, originLng, destLat, destLng) * 1.3
+		distance = haversineDistance(originLat, originLng, destLat, destLng) * 1.4
 	}
 
 	// Store in cache
@@ -1484,17 +1585,18 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// Retrieve order dispatch_id and parent_order_number
-	var dispatchID, parentNum string
-	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(dispatch_id, ''), COALESCE(parent_order_number, '') FROM orders WHERE id = $1", orderID).Scan(&dispatchID, &parentNum)
+	// Retrieve order driver_id and dispatch_id
+	var currentDriverID int
+	var dispatchID string
+	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(driver_id, 0), COALESCE(dispatch_id, '') FROM orders WHERE id = $1", orderID).Scan(&currentDriverID, &dispatchID)
 
-	if dispatchID != "" || parentNum != "" {
-		// Update all sibling orders in the same batch group
+	if currentDriverID > 0 && dispatchID != "" {
+		// Update ONLY sibling orders assigned to the SAME driver in the SAME dispatch group
 		_, err := h.DB.Exec(ctx,
 			`UPDATE orders 
 			 SET status = 'DELIVERING', pickup_photo_url = $1, pickup_note = $2 
-			 WHERE id = $3 OR (dispatch_id = $4 AND dispatch_id != '') OR (parent_order_number = $5 AND parent_order_number != '')`,
-			req.PickupPhoto, req.PickupNote, orderID, dispatchID, parentNum,
+			 WHERE driver_id = $3 AND dispatch_id = $4`,
+			req.PickupPhoto, req.PickupNote, currentDriverID, dispatchID,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui status pickup batch: " + err.Error()})
@@ -1941,7 +2043,7 @@ func (h *AdminHandler) GetPublicOrderDetail(c *gin.Context) {
 		       COALESCE(extra_items_photo_url, '')
 		FROM orders 
 		WHERE (dispatch_id != '' AND dispatch_id = $1)
-		   OR (parent_order_number != '' AND parent_order_number = $2)
+		   OR ((dispatch_id IS NULL OR dispatch_id = '') AND parent_order_number != '' AND parent_order_number = $2)
 		   OR id = $3
 		ORDER BY id ASC`
 

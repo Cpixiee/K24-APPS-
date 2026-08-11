@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
-import { Search, ArrowLeft, FileText, Truck, CheckCircle, AlertCircle, Activity, MapPin, User, Compass, CreditCard, Phone, Download, Printer, Map, Calendar, Clock, MoreVertical, ChevronLeft, ChevronRight, Navigation } from 'lucide-react'
+import { Search, ArrowLeft, FileText, Truck, CheckCircle, AlertCircle, Activity, MapPin, User, UserX, Compass, CreditCard, Phone, Download, Printer, Map, Calendar, Clock, MoreVertical, ChevronLeft, ChevronRight, Navigation, Pencil, Trash2, Loader2 } from 'lucide-react'
 
 // Matches backend OrderSummary struct from admin_orders.go GetOrders
 interface OrderSummary {
@@ -78,6 +79,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 const formatRp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
 
 export default function OrdersPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,6 +92,86 @@ export default function OrdersPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [approvingId, setApprovingId] = useState<number | null>(null)
   const [activeStopIndex, setActiveStopIndex] = useState(0)
+
+  // Action Dropdown & Delete Modal States
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
+  const [deletingOrder, setDeletingOrder] = useState<{ id: string; count: number } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [cancelingDriverOrder, setCancelingDriverOrder] = useState<{ id: string } | null>(null)
+  const [isCancelingDriver, setIsCancelingDriver] = useState(false)
+
+  const toggleDropdown = (e: React.MouseEvent<HTMLButtonElement>, dispatchId: string) => {
+    e.stopPropagation()
+    if (openDropdownId === dispatchId) {
+      setOpenDropdownId(null)
+      setDropdownPos(null)
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect()
+      let top = rect.bottom + 4
+      if (rect.bottom + 100 > window.innerHeight) {
+        top = rect.top - 88
+      }
+      setDropdownPos({
+        top,
+        left: Math.max(10, rect.right - 176),
+      })
+      setOpenDropdownId(dispatchId)
+    }
+  }
+
+  const handleEditOrder = (dispatchId: string) => {
+    setOpenDropdownId(null)
+    setDropdownPos(null)
+    router.push(`/dashboard/create-order?edit_id=${encodeURIComponent(dispatchId)}`)
+  }
+
+  const handleDeleteClick = (dispatchId: string, count: number) => {
+    setOpenDropdownId(null)
+    setDropdownPos(null)
+    setDeletingOrder({ id: dispatchId, count })
+  }
+
+  const handleCancelDriverClick = (dispatchId: string) => {
+    setOpenDropdownId(null)
+    setDropdownPos(null)
+    setCancelingDriverOrder({ id: dispatchId })
+  }
+
+  const handleConfirmCancelDriver = async () => {
+    if (!cancelingDriverOrder) return
+    setIsCancelingDriver(true)
+    try {
+      await adminAPI.cancelDriverAssignment(cancelingDriverOrder.id)
+      toast.success(`Penugasan driver untuk order ${cancelingDriverOrder.id} berhasil dibatalkan!`)
+      setCancelingDriverOrder(null)
+      if (selectedDispatchId) {
+        fetchDetail(cancelingDriverOrder.id)
+      }
+      fetchOrders()
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } }
+      toast.error(axiosErr.response?.data?.message || 'Gagal membatalkan penugasan driver')
+    } finally {
+      setIsCancelingDriver(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deletingOrder) return
+    setIsDeleting(true)
+    try {
+      await adminAPI.deleteOrder(deletingOrder.id)
+      toast.success(`Order ${deletingOrder.id} berhasil dihapus!`)
+      setDeletingOrder(null)
+      fetchOrders()
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } }
+      toast.error(axiosErr.response?.data?.message || 'Gagal menghapus order')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const handleApproveReject = async (orderId: number, approve: boolean) => {
     setApprovingId(orderId)
@@ -560,7 +642,7 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total Jarak</p>
-                  <p className="font-extrabold text-sm text-foreground">{totalDistance.toFixed(1)} km</p>
+                  <p className="font-extrabold text-sm text-foreground">{isDispatched && totalDistance > 0 ? `${totalDistance.toFixed(1)} km` : '—'}</p>
                   <p className="text-[10px] text-muted-foreground">Estimasi Jarak</p>
                 </div>
               </div>
@@ -594,8 +676,8 @@ export default function OrdersPage() {
                     </span>
                   </div>
 
-                  {/* Horizontal Scrollable Tabs per Stop */}
-                  <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 border-b border-border">
+                  {/* Grid Layout Cards per Stop (Default 4 Columns, Responsive Wrap) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 pb-3 border-b border-border">
                     {orderDetail.stops?.map((s, idx) => {
                       const isActive = activeStopIndex === idx
                       const sc = STATUS_CONFIG[s.status] || { label: s.status, color: 'bg-muted text-muted-foreground' }
@@ -604,23 +686,29 @@ export default function OrdersPage() {
                           key={s.id || idx}
                           type="button"
                           onClick={() => setActiveStopIndex(idx)}
-                          className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
+                          className={`w-full flex flex-col justify-between gap-2 p-3 rounded-xl text-xs font-bold transition-all text-left border ${
                             isActive
-                              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 scale-[1.02]'
-                              : 'bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground border border-border'
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20 scale-[1.01]'
+                              : 'bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground border-border'
                           }`}
                         >
-                          <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
-                            isActive ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-600'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <span className="max-w-[140px] truncate">{s.nama_apotek}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                            isActive ? 'bg-white/25 text-white' : sc.color
-                          }`}>
-                            {sc.label}
-                          </span>
+                          <div className="flex items-center gap-2 min-w-0 w-full">
+                            <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
+                              isActive ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-950 text-blue-600'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-xs truncate flex-1 min-w-0" title={s.nama_apotek}>
+                              {s.nama_apotek}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between w-full pt-1.5 border-t border-current/10">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${
+                              isActive ? 'bg-white/20 text-white' : sc.color
+                            }`}>
+                              {sc.label}
+                            </span>
+                          </div>
                         </button>
                       )
                     })}
@@ -655,7 +743,7 @@ export default function OrdersPage() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <Compass className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span>Jarak: <strong className="text-foreground font-semibold">{s.distance_km > 0 ? `${s.distance_km.toFixed(1)} km` : '—'}</strong></span>
+                            <span>Jarak: <strong className="text-foreground font-semibold">{isDispatched && s.distance_km > 0 ? `${s.distance_km.toFixed(1)} km` : '—'}</strong></span>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <CreditCard className="h-3.5 w-3.5 text-blue-500 shrink-0" />
@@ -718,12 +806,20 @@ export default function OrdersPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => window.open(`tel:${assignedDriver.driver_phone || '08123456789'}`)}
-                        className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/60 hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-colors font-semibold text-xs"
-                      >
-                        <Phone className="h-4 w-4" /> Hubungi Driver
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => window.open(`tel:${assignedDriver.driver_phone || '08123456789'}`)}
+                          className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/60 hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-colors font-semibold text-xs"
+                        >
+                          <Phone className="h-4 w-4" /> Hubungi Driver
+                        </button>
+                        <button
+                          onClick={() => handleCancelDriverClick(orderDetail.dispatch_id)}
+                          className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors font-semibold text-xs"
+                        >
+                          <UserX className="h-4 w-4" /> Batalkan Penugasan Driver
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-6 text-muted-foreground text-xs">
@@ -875,7 +971,7 @@ export default function OrdersPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden min-h-[220px]">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -974,7 +1070,12 @@ export default function OrdersPage() {
                             >
                               Lihat Detail
                             </button>
-                            <button className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleDropdown(e, o.dispatch_id)}
+                              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0 border border-transparent hover:border-border"
+                              title="Pilihan Aksi"
+                            >
                               <MoreVertical className="h-4 w-4" />
                             </button>
                           </div>
@@ -985,6 +1086,141 @@ export default function OrdersPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Fixed Position Dropdown Popup (Escapes overflow-hidden completely!) */}
+            {openDropdownId && dropdownPos && (
+              <>
+                <div
+                  className="fixed inset-0 z-50 bg-transparent"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setOpenDropdownId(null)
+                    setDropdownPos(null)
+                  }}
+                />
+                <div
+                  style={{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }}
+                  className="fixed z-50 w-44 rounded-xl border border-border bg-card p-1.5 shadow-2xl shadow-black/20 animate-in fade-in-50 zoom-in-95"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {(() => {
+                    const ord = orders.find((o) => o.dispatch_id === openDropdownId)
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleEditOrder(openDropdownId)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-foreground hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:text-blue-600 transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <span>Edit Order</span>
+                        </button>
+                        {ord?.is_dispatched && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelDriverClick(openDropdownId)}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                          >
+                            <UserX className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            <span>Batal Driver</span>
+                          </button>
+                        )}
+                        <div className="my-1 border-t border-border/60" />
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(openDropdownId, ord?.stop_count || 1)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                          <span>Hapus Order</span>
+                        </button>
+                      </>
+                    )
+                  })()}
+                </div>
+              </>
+            )}
+
+            {/* Cancel Driver Assignment Confirmation Modal */}
+            {cancelingDriverOrder && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+                <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl space-y-4">
+                  <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/50">
+                      <UserX className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">Batalkan Penugasan Driver?</h3>
+                      <p className="text-xs text-muted-foreground">Order {cancelingDriverOrder.id}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Penugasan driver untuk order <strong className="text-foreground">{cancelingDriverOrder.id}</strong> akan dibatalkan. Status order akan dikembalikan ke <strong className="text-foreground">PENDING</strong> dan dimasukkan kembali ke antrean <strong className="text-foreground">Dispatch Operator (OTMS)</strong> agar dapat di-dispatch ke driver lain.
+                  </p>
+
+                  <div className="flex items-center justify-end gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      disabled={isCancelingDriver}
+                      onClick={() => setCancelingDriverOrder(null)}
+                      className="h-10 px-4 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isCancelingDriver}
+                      onClick={handleConfirmCancelDriver}
+                      className="h-10 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      {isCancelingDriver && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <span>Ya, Batalkan Driver</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deletingOrder && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+                <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl space-y-4">
+                  <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-950/50">
+                      <Trash2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground">Hapus Order {deletingOrder.id}?</h3>
+                      <p className="text-xs text-muted-foreground">Konfirmasi penghapusan order dari sistem</p>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Apakah Anda yakin ingin menghapus order <strong className="text-foreground">{deletingOrder.id}</strong> ({deletingOrder.count} titik alamat)? Order dan rincian pengantaran akan dihapus secara permanen.
+                  </p>
+
+                  <div className="flex items-center justify-end gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => setDeletingOrder(null)}
+                      className="h-10 px-4 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={handleConfirmDelete}
+                      className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm transition-colors shadow-md shadow-rose-500/20 flex items-center gap-2"
+                    >
+                      {isDeleting ? <><Loader2 className="h-4 w-4 animate-spin" /> Menghapus...</> : 'Ya, Hapus Order'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pagination footer */}
             <div className="border-t border-border px-5 py-4 flex items-center justify-between">

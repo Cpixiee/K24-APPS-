@@ -163,6 +163,7 @@ func main() {
 			admin.POST("/drivers/:id/reject", adminHandler.RejectDriver)
 			admin.GET("/mitra", adminHandler.GetMitra)
 			admin.POST("/mitra", adminHandler.CreateMitra)
+			admin.POST("/mitra/:id/impersonate", adminHandler.ImpersonateMitra)
 			admin.POST("/orders", adminHandler.CreateOrder)
 			admin.GET("/mitra/profile", adminHandler.GetMitraProfile)
 			admin.GET("/recipients", adminHandler.GetRecipients)
@@ -171,11 +172,13 @@ func main() {
 			admin.GET("/orders", adminHandler.GetOrders)
 			admin.GET("/orders/invoices-flat", adminHandler.GetFlatInvoices)
 			admin.GET("/orders/:dispatch_id", adminHandler.GetOrderDetail)
+			admin.DELETE("/orders/:id", adminHandler.DeleteOrder)
 			admin.POST("/orders/:id/approve-reject", adminHandler.AdminApproveReject)
 			admin.POST("/orders/:id/approve-facture", adminHandler.AdminApproveFacture)
 			admin.GET("/dispatch/orders", adminHandler.GetPendingDispatchOrders)
 			admin.GET("/dispatch/drivers", adminHandler.GetDispatchDrivers)
 			admin.POST("/dispatch", adminHandler.CreateDispatchGroup)
+			admin.POST("/dispatch/:dispatch_id/cancel", adminHandler.CancelDriverAssignment)
 			admin.GET("/dispatch/:dispatch_id/live-track", adminHandler.GetDispatchLiveTracking)
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -126,13 +125,56 @@ func (h *AdminHandler) GetPendingDispatchOrders(c *gin.Context) {
 
 	batchesList := []models.PendingDispatchBatch{}
 	for _, id := range batchOrder {
-		batchesList = append(batchesList, *batchMap[id])
+		batch := batchMap[id]
+		rates := loadMitraFullRates(h.DB, ctx, batch.MitraID)
+		batch.Stops = sortPendingStopsNearestNeighbor(rates.OriginLat, rates.OriginLong, batch.Stops)
+		batchesList = append(batchesList, *batch)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Status: "success",
 		Data:   batchesList,
 	})
+}
+
+func sortPendingStopsNearestNeighbor(originLat, originLng float64, stops []models.PendingDispatchStop) []models.PendingDispatchStop {
+	if len(stops) <= 1 {
+		return stops
+	}
+	remaining := make([]models.PendingDispatchStop, len(stops))
+	copy(remaining, stops)
+	sorted := make([]models.PendingDispatchStop, 0, len(stops))
+
+	currLat, currLng := originLat, originLng
+
+	for len(remaining) > 0 {
+		bestIdx := 0
+		bestDist := math.MaxFloat64
+
+		for i, s := range remaining {
+			sLat, sLng := s.Lat, s.Lng
+			if sLat == 0 && sLng == 0 {
+				sLat = originLat + 0.05
+				sLng = originLng + 0.05
+			}
+			dist := haversineDist(currLat, currLng, sLat, sLng)
+			if dist < bestDist {
+				bestDist = dist
+				bestIdx = i
+			}
+		}
+
+		chosen := remaining[bestIdx]
+		sorted = append(sorted, chosen)
+
+		if chosen.Lat != 0 && chosen.Lng != 0 {
+			currLat = chosen.Lat
+			currLng = chosen.Lng
+		}
+		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+	}
+
+	return sorted
 }
 
 // GetDispatchDrivers fetches all drivers filtered by vehicle_type
@@ -308,8 +350,8 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		ordersMap[orderID] = o
 	}
 
-	// Verify driver vehicle type matches order armada
-	if driverVehicleType != commonArmada {
+	// Verify driver vehicle type matches order armada (case-insensitive)
+	if !strings.EqualFold(driverVehicleType, commonArmada) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Jenis kendaraan driver (%s) tidak cocok dengan armada order (%s)", driverVehicleType, commonArmada),
@@ -333,10 +375,10 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 	err = tx.QueryRow(ctx,
 		"SELECT pickup_lat, pickup_long FROM mitra_profiles WHERE user_id = $1", commonMitraID,
 	).Scan(&originLat, &originLong)
-	if err != nil {
-		// Fallback to Yogyakarta center
-		originLat = -7.782889
-		originLong = 110.377042
+	if err != nil || originLat == 0 || originLong == 0 {
+		// Fallback to PT K-24 Cabang Jakarta center
+		originLat = -6.2019957
+		originLong = 106.8551888
 	}
 
 	// Load active rate for this Mitra/Armada/RateType
@@ -402,47 +444,27 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		})
 	}
 
-	// Sort sequence by Zone Rank and nearest distance from origin
+	// Sort sequence by pure nearest neighbor distance from origin
 	orderedSequence := []int{}
+	remainingSeq := make([]orderSeqItem, len(seqItems))
+	copy(remainingSeq, seqItems)
 	currLat, currLng := originLat, originLong
 
-	// Collect unique zones present in seqItems dynamically (guarantees Zona 4, Zona 5 are included)
-	zoneMap := make(map[int][]orderSeqItem)
-	for _, item := range seqItems {
-		z := item.zona
-		if z <= 0 {
-			z = 99
-		}
-		zoneMap[z] = append(zoneMap[z], item)
-	}
-
-	uniqueZones := make([]int, 0, len(zoneMap))
-	for z := range zoneMap {
-		uniqueZones = append(uniqueZones, z)
-	}
-	sort.Ints(uniqueZones)
-
-	for _, zoneRank := range uniqueZones {
-		group := zoneMap[zoneRank]
-		remaining := make([]orderSeqItem, len(group))
-		copy(remaining, group)
-
-		for len(remaining) > 0 {
-			bestIdx := 0
-			bestDist := math.MaxFloat64
-			for idx, r := range remaining {
-				dist := haversineDist(currLat, currLng, r.lat, r.lng)
-				if dist < bestDist {
-					bestDist = dist
-					bestIdx = idx
-				}
+	for len(remainingSeq) > 0 {
+		bestIdx := 0
+		bestDist := math.MaxFloat64
+		for idx, r := range remainingSeq {
+			dist := haversineDist(currLat, currLng, r.lat, r.lng)
+			if dist < bestDist {
+				bestDist = dist
+				bestIdx = idx
 			}
-			chosen := remaining[bestIdx]
-			orderedSequence = append(orderedSequence, chosen.orderID)
-			currLat = chosen.lat
-			currLng = chosen.lng
-			remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
 		}
+		chosen := remainingSeq[bestIdx]
+		orderedSequence = append(orderedSequence, chosen.orderID)
+		currLat = chosen.lat
+		currLng = chosen.lng
+		remainingSeq = append(remainingSeq[:bestIdx], remainingSeq[bestIdx+1:]...)
 	}
 
 	var totalDistance float64
@@ -460,14 +482,16 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			o.customerName, o.deliveryAddress,
 		).Scan(&destLat, &destLng)
 		if err != nil {
-			// Fallback: simulate coordinates close to origin
-			destLat = originLat + (float64(orderID%100) * 0.001)
-			destLng = originLong + (float64(orderID%100) * 0.001)
+			destLat, destLng, _ = geocodeAddress(o.deliveryAddress, originLat, originLong)
 		}
 
 		// Calculate segment distance: from last point to current destination
 		segmentDist, _ := calculateDistance(h.DB, lastLat, lastLng, destLat, destLng)
 		totalDistance += segmentDist
+
+		// Update last position to current stop for sequential distance calculation
+		lastLat = destLat
+		lastLng = destLng
 
 		// Calculate segment argo
 		segmentArgo := math.Round(calcRowPrice(commonRateType, activeRate, segmentDist, o.kubik, o.berat, i))
@@ -557,5 +581,69 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			"total_distance_km": totalDistance,
 			"total_argo":        totalArgo,
 		},
+	})
+}
+
+// CancelDriverAssignment cancels driver assignment, reverting orders to PENDING & clearing dispatch_id
+func (h *AdminHandler) CancelDriverAssignment(c *gin.Context) {
+	dispatchID := c.Param("dispatch_id")
+	ctx := context.Background()
+
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memulai transaksi database"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Fetch matching driver ID before clearing
+	var oldDriverID int
+	_ = tx.QueryRow(ctx,
+		"SELECT COALESCE(driver_id, 0) FROM orders WHERE (dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1) AND driver_id IS NOT NULL AND driver_id > 0 LIMIT 1;",
+		dispatchID,
+	).Scan(&oldDriverID)
+
+	// 2. Revert orders status to PENDING and clear driver_id & dispatch_id
+	res, err := tx.Exec(ctx,
+		`UPDATE orders 
+		 SET driver_id = NULL, 
+		     dispatch_id = NULL, 
+		     status = 'PENDING' 
+		 WHERE dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1;`,
+		dispatchID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal membatalkan penugasan driver: " + err.Error()})
+		return
+	}
+	count := int(res.RowsAffected())
+	if count == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Order atau grup dispatch tidak ditemukan atau belum ditugaskan ke driver"})
+		return
+	}
+
+	// 3. Delete dispatch_id_detail & dispatch_groups records if dispatch_number matches
+	var groupID int
+	_ = tx.QueryRow(ctx, "SELECT id FROM dispatch_groups WHERE dispatch_number = $1;", dispatchID).Scan(&groupID)
+	if groupID > 0 {
+		_, _ = tx.Exec(ctx, "DELETE FROM dispatch_id_detail WHERE dispatch_group_id = $1;", groupID)
+		_, _ = tx.Exec(ctx, "DELETE FROM dispatch_groups WHERE id = $1;", groupID)
+	}
+
+	// 4. Send cancellation notification to old driver if present
+	if oldDriverID > 0 {
+		title := "Penugasan Pengantaran Dibatalkan"
+		message := fmt.Sprintf("Penugasan pengantaran untuk grup/order %s telah dibatalkan oleh Admin.", dispatchID)
+		_, _ = tx.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3);", oldDriverID, title, message)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyelesaikan transaksi database"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Penugasan driver untuk %s berhasil dibatalkan. %d order dikembalikan ke antrean dispatch.", dispatchID, count),
 	})
 }

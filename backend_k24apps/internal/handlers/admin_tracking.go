@@ -144,7 +144,7 @@ func (h *AdminHandler) GetDispatchLiveTracking(c *gin.Context) {
 	var commonMitraID int
 	_ = h.DB.QueryRow(ctx, `
 		SELECT o.pharmacy_name, o.pharmacy_address, COALESCE(o.mitra_id, 0),
-		       COALESCE(mp.pickup_lat, -7.782889), COALESCE(mp.pickup_long, 110.377042)
+		       COALESCE(mp.pickup_lat, -6.2019957), COALESCE(mp.pickup_long, 106.8551888)
 		FROM orders o
 		LEFT JOIN mitra_profiles mp ON o.mitra_id = mp.user_id
 		WHERE o.dispatch_id = $1 OR o.order_number = $1

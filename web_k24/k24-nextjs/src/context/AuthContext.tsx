@@ -18,12 +18,22 @@ interface UserData {
   rating?: number
 }
 
+export interface ImpersonatedMitra {
+  id: number
+  name: string
+  email: string
+  phone?: string
+}
+
 interface AuthContextType {
   user: UserData | null
+  impersonatedMitra: ImpersonatedMitra | null
   loading: boolean
   error: string | null
   login: (email: string, password: string) => Promise<{ success: boolean; role?: string; error?: string }>
   logout: () => void
+  startImpersonation: (mitra: ImpersonatedMitra, token: string) => void
+  stopImpersonation: () => void
   isAuthenticated: boolean
   sessionRemainingMinutes: number | null
 }
@@ -48,6 +58,8 @@ function loadUserFromStorage(): UserData | null {
       localStorage.removeItem('k24_token')
       localStorage.removeItem('k24_user')
       localStorage.removeItem('k24_login_time')
+      localStorage.removeItem('k24_impersonated_mitra')
+      localStorage.removeItem('k24_original_admin')
       return null
     }
     const saved = localStorage.getItem('k24_user')
@@ -65,8 +77,18 @@ function loadUserFromStorage(): UserData | null {
   }
 }
 
+function loadImpersonatedMitra(): ImpersonatedMitra | null {
+  try {
+    const saved = localStorage.getItem('k24_impersonated_mitra')
+    return saved ? JSON.parse(saved) : null
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null)
+  const [impersonatedMitra, setImpersonatedMitra] = useState<ImpersonatedMitra | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
@@ -74,7 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Hydrate from localStorage on mount (client-side only)
   useEffect(() => {
     const loadedUser = loadUserFromStorage()
+    const loadedImpersonated = loadImpersonatedMitra()
     setUser(loadedUser)
+    setImpersonatedMitra(loadedImpersonated)
     setHydrated(true)
     if (!loadedUser && window.location.pathname.startsWith('/dashboard')) {
       document.cookie = 'k24_auth=; path=/; max-age=0; SameSite=Lax'
@@ -90,7 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('k24_token')
         localStorage.removeItem('k24_user')
         localStorage.removeItem('k24_login_time')
+        localStorage.removeItem('k24_impersonated_mitra')
+        localStorage.removeItem('k24_original_admin')
         setUser(null)
+        setImpersonatedMitra(null)
         window.location.href = '/login'
       }
     }, 60_000)
@@ -109,10 +136,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const userData: UserData = { ...driver, role, token }
+      localStorage.removeItem('k24_impersonated_mitra')
+      localStorage.removeItem('k24_original_admin')
       localStorage.setItem('k24_token', token)
       localStorage.setItem('k24_user', JSON.stringify(userData))
       localStorage.setItem('k24_login_time', Date.now().toString())
       setUser(userData)
+      setImpersonatedMitra(null)
       return { success: true, role }
     } catch (err: any) {
       let msg = 'Email atau password yang Anda masukkan salah.'
@@ -128,12 +158,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const startImpersonation = useCallback((mitra: ImpersonatedMitra, token: string) => {
+    if (user && !impersonatedMitra) {
+      localStorage.setItem('k24_original_admin', JSON.stringify({ user, token: localStorage.getItem('k24_token') }))
+    }
+    const impersonatedUser: UserData = {
+      id: mitra.id,
+      name: mitra.name,
+      email: mitra.email,
+      phone: mitra.phone,
+      role: 'MITRA',
+      token,
+    }
+    localStorage.setItem('k24_token', token)
+    localStorage.setItem('k24_user', JSON.stringify(impersonatedUser))
+    localStorage.setItem('k24_impersonated_mitra', JSON.stringify(mitra))
+    setUser(impersonatedUser)
+    setImpersonatedMitra(mitra)
+  }, [user, impersonatedMitra])
+
+  const stopImpersonation = useCallback(() => {
+    const orig = localStorage.getItem('k24_original_admin')
+    if (orig) {
+      try {
+        const parsed = JSON.parse(orig)
+        localStorage.setItem('k24_token', parsed.token)
+        localStorage.setItem('k24_user', JSON.stringify(parsed.user))
+        setUser(parsed.user)
+      } catch (_) {}
+    }
+    localStorage.removeItem('k24_impersonated_mitra')
+    localStorage.removeItem('k24_original_admin')
+    setImpersonatedMitra(null)
+  }, [])
+
   const logout = useCallback(() => {
     localStorage.removeItem('k24_token')
     localStorage.removeItem('k24_user')
     localStorage.removeItem('k24_login_time')
+    localStorage.removeItem('k24_impersonated_mitra')
+    localStorage.removeItem('k24_original_admin')
     document.cookie = 'k24_auth=; path=/; max-age=0; SameSite=Lax'
     setUser(null)
+    setImpersonatedMitra(null)
     window.location.href = '/login'
   }, [])
 
@@ -150,10 +217,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        impersonatedMitra,
         loading,
         error,
         login,
         logout,
+        startImpersonation,
+        stopImpersonation,
         isAuthenticated: !!user,
         sessionRemainingMinutes,
       }}

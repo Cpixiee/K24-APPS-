@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
-import { Search, AlertCircle, Plus, X, ChevronRight, ChevronLeft, ChevronDown, Store, Building2, CheckCircle2, Bike, Car } from 'lucide-react'
+import { Search, AlertCircle, Plus, X, ChevronRight, ChevronLeft, ChevronDown, Store, Building2, CheckCircle2, Bike, Car, ExternalLink, LogIn, Loader2 } from 'lucide-react'
 
 const PICKUP_LOCATIONS_K24 = [
   { name: 'PT K-24 Indonesia Cabang Jakarta (Gudang K-24)', lat: -6.2019957, long: 106.8551888 },
@@ -21,7 +23,7 @@ const INITIAL_FORM = {
   username: '', email: '', name: '', phone: '', password: '',
   pic_name: '', pic_nik: '', alamat_lengkap: '', pickup_index: '', custom_pickup: '',
   motor_dimensi: '', motor_km: '', motor_titik: '', motor_berat: '',
-  motor_zona1: '10500', motor_zona2: '17500', motor_zona3: '24500',
+  motor_zona1: '0', motor_zona2: '0', motor_zona3: '0',
   mobil_dimensi: '', mobil_km: '', mobil_titik: '', mobil_berat: '', mobil_lumpsum: '',
 }
 
@@ -60,6 +62,9 @@ function InputField({ error, ...props }: React.InputHTMLAttributes<HTMLInputElem
 }
 
 export default function MitraPage() {
+  const router = useRouter()
+  const { startImpersonation } = useAuth()
+  const [remoteLoadingId, setRemoteLoadingId] = useState<number | null>(null)
   const [mitra, setMitra] = useState<Mitra[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -71,6 +76,23 @@ export default function MitraPage() {
   const [submitting, setSubmitting] = useState(false)
   const [motorOpen, setMotorOpen] = useState(true)
   const [mobilOpen, setMobilOpen] = useState(false)
+
+  const handleRemoteAkses = async (m: Mitra) => {
+    setRemoteLoadingId(m.id)
+    try {
+      const res = await adminAPI.impersonateMitra(m.id)
+      const token = res.data?.data?.token
+      if (token) {
+        startImpersonation({ id: m.id, name: m.name, email: m.email, phone: m.phone }, token)
+        toast.success(`Mode Remote Akses Aktif: Menjadi ${m.name}`)
+        router.push('/dashboard/create-order')
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Gagal memulai remote akses')
+    } finally {
+      setRemoteLoadingId(null)
+    }
+  }
 
   const fetchMitra = useCallback(async () => {
     setLoading(true)
@@ -433,7 +455,7 @@ export default function MitraPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {[{key:'motor_zona1',label:'Tagihan Zona 1 (Rp)'},{key:'motor_zona2',label:'Tagihan Zona 2 (Rp)'},{key:'motor_zona3',label:'Tagihan Zona 3 (Rp)'}].map(({key,label}) => (
                         <FormField key={key} label={label}>
-                          <InputField type="number" placeholder="20000" value={form[key as keyof FormData]} onChange={(e) => setField(key as keyof FormData, e.target.value)} />
+                          <InputField type="number" placeholder="0" value={form[key as keyof FormData]} onChange={(e) => setField(key as keyof FormData, e.target.value)} />
                         </FormField>
                       ))}
                     </div>
@@ -500,7 +522,7 @@ export default function MitraPage() {
     <DashboardShell onRefresh={fetchMitra} showCreateMitra onCreateMitra={() => setShowCreateForm(true)}>
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Apotek Mitra K-24</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Mitra</h1>
           <p className="text-sm text-muted-foreground mt-1">Daftar dan kelola lokasi outlet apotek mitra franchise K-24.</p>
         </div>
         <button
@@ -539,8 +561,8 @@ export default function MitraPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  {['Apotek Mitra', 'Tipe Partner', 'Username', 'Email', 'No. HP', 'Terdaftar'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                  {['Apotek Mitra', 'Tipe Partner', 'Username', 'Email', 'No. HP', 'Terdaftar', 'Aksi'].map((h) => (
+                    <th key={h} className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${h === 'Aksi' ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -569,6 +591,22 @@ export default function MitraPage() {
                     <td className="px-4 py-3 text-muted-foreground">{m.phone}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {new Date(m.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        disabled={remoteLoadingId === m.id}
+                        onClick={() => handleRemoteAkses(m)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800/60 transition-colors shadow-xs disabled:opacity-50"
+                        title="Remote Akses ke Akun Mitra"
+                      >
+                        {remoteLoadingId === m.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        )}
+                        <span>Remote Akses</span>
+                      </button>
                     </td>
                   </tr>
                 ))}

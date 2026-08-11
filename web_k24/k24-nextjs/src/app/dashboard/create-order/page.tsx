@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, Search, Loader2, CheckCircle, HelpCircle, X, Check, Save, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, Search, Loader2, CheckCircle, HelpCircle, X, Check, Save, RotateCcw, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import * as XLSX from 'xlsx'
 
@@ -39,12 +39,17 @@ const inputClass = 'h-10 w-full rounded-lg border border-border bg-background px
 
 const formatRp = (n?: number | null) => n != null ? `Rp ${Math.round(n).toLocaleString('id-ID')}` : '-'
 
-export default function CreateOrderPage() {
+function CreateOrderContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams ? searchParams.get('edit_id') : null
+  const [editingOrderNum, setEditingOrderNum] = useState<string | null>(null)
+
   const [step, setStep] = useState(1)
-  const [selectedArmada, setSelectedArmada] = useState<'motor' | 'mobil'>('motor')
-  const [selectedRate, setSelectedRate] = useState('zona')
-  const [inputMethod, setInputMethod] = useState<'manual' | 'csv'>('manual')
+  const [selectedArmada, setSelectedArmada] = useState<'motor' | 'mobil' | ''>('')
+  const [selectedRate, setSelectedRate] = useState<string>('')
+  const [inputMethod, setInputMethod] = useState<'manual' | 'csv' | ''>('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [mitraProfile, setMitraProfile] = useState<MitraProfile | null>(null)
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [rows, setRows] = useState<OrderRow[]>([INITIAL_ROW()])
@@ -52,6 +57,46 @@ export default function CreateOrderPage() {
   const [invoiceInput, setInvoiceInput] = useState<Record<number, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [hasRestoredDraft, setHasRestoredDraft] = useState(false)
+
+  // Handle Mode Edit Order via ?edit_id= query param
+  useEffect(() => {
+    if (!editId) return
+    setEditingOrderNum(editId)
+
+    adminAPI.getOrderDetail(editId).then((res) => {
+      const data = res.data?.data
+      if (data && data.stops && data.stops.length > 0) {
+        if (data.armada) setSelectedArmada(data.armada as 'motor' | 'mobil')
+        if (data.rate_type) setSelectedRate(data.rate_type)
+        setInputMethod('manual')
+
+        const loadedRows: OrderRow[] = data.stops.map((s: any, idx: number) => ({
+          id: Date.now() + idx + Math.random(),
+          nama_apotek: s.nama_apotek || s.customer_name || '',
+          alamat_lengkap: s.alamat || s.delivery_address || '',
+          latitude: 0,
+          longitude: 0,
+          invoices: s.invoices || [],
+          kubik_aktual: '',
+          berat_aktual: '',
+        }))
+
+        setRows(loadedRows)
+
+        const invMap: Record<number, string> = {}
+        loadedRows.forEach((r) => {
+          if (r.invoices && r.invoices.length > 0) {
+            invMap[r.id] = r.invoices.join(', ')
+          }
+        })
+        setInvoiceInput(invMap)
+        setStep(3)
+        toast.info(`Mode Edit Order: Memuat pesanan ${editId}`)
+      }
+    }).catch(() => {
+      toast.error('Gagal mengambil data order untuk diedit')
+    })
+  }, [editId])
 
   // Restore draft on initial load
   useEffect(() => {
@@ -66,6 +111,7 @@ export default function CreateOrderPage() {
             setRows(parsed.rows)
             if (parsed.selectedArmada) setSelectedArmada(parsed.selectedArmada)
             if (parsed.selectedRate) setSelectedRate(parsed.selectedRate)
+            if (parsed.inputMethod) setInputMethod(parsed.inputMethod)
             if (parsed.invoiceInput) setInvoiceInput(parsed.invoiceInput)
             setHasRestoredDraft(true)
             toast.info('Draft pesanan sebelumnya otomatis dipulihkan 💾')
@@ -84,6 +130,7 @@ export default function CreateOrderPage() {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
           selectedArmada,
           selectedRate,
+          inputMethod,
           rows,
           invoiceInput,
           updatedAt: new Date().toISOString(),
@@ -91,7 +138,7 @@ export default function CreateOrderPage() {
         setHasRestoredDraft(true)
       }
     } catch (_) {}
-  }, [selectedArmada, selectedRate, rows, invoiceInput])
+  }, [selectedArmada, selectedRate, inputMethod, rows, invoiceInput])
 
   const clearDraft = () => {
     if (typeof window !== 'undefined') {
@@ -127,20 +174,39 @@ export default function CreateOrderPage() {
 
   useEffect(() => { fetchProfile(); fetchRecipients() }, [fetchProfile, fetchRecipients])
 
-  // Filter rate configurations: show Skema Zona as primary option + configured standard rates
+  // Filter rate configurations: show Skema Zona as primary option ONLY IF configured, plus other valid rates
   const motorRates = useMemo(() => {
     if (!mitraProfile) return []
-    const z1 = mitraProfile.motor_zona1 || 20000
-    const z2 = mitraProfile.motor_zona2 || 25000
-    const z3 = mitraProfile.motor_zona3 || 30000
-    const list = [
-      { key: 'zona', label: 'Skema Zona (Surabaya)', valLabel: `Z1: ${formatRp(z1)} | Z2: ${formatRp(z2)} | Z3: ${formatRp(z3)} | Z4: Driver Flat Rp 26k | Z5: Driver Flat Rp 30k`, val: z1, unit: '/zona' },
-      { key: 'km', label: 'Skema KM', valLabel: formatRp(mitraProfile.motor_km), val: mitraProfile.motor_km, unit: '/km' },
-      { key: 'titik', label: 'Skema Titik', valLabel: formatRp(mitraProfile.motor_titik), val: mitraProfile.motor_titik, unit: '/titik' },
-      { key: 'dimensi', label: 'Skema Dimensi', valLabel: formatRp(mitraProfile.motor_dimensi), val: mitraProfile.motor_dimensi, unit: '/dm³' },
-      { key: 'berat', label: 'Skema Berat', valLabel: formatRp(mitraProfile.motor_berat), val: mitraProfile.motor_berat, unit: '/kg' },
-    ]
-    return list.filter((r) => r.key === 'zona' || (r.val != null && r.val > 0))
+    const list: { key: string; label: string; valLabel: string; val?: number; unit: string }[] = []
+
+    // Skema Zona only shown if motor_zona1 is explicitly configured (not null/undefined/<=0)
+    if (mitraProfile.motor_zona1 != null && mitraProfile.motor_zona1 > 0) {
+      const z1 = mitraProfile.motor_zona1
+      const z2 = mitraProfile.motor_zona2 || z1
+      const z3 = mitraProfile.motor_zona3 || z1
+      list.push({
+        key: 'zona',
+        label: 'Skema Zona (Surabaya)',
+        valLabel: `Z1: ${formatRp(z1)} | Z2: ${formatRp(z2)} | Z3: ${formatRp(z3)} | Z4: Driver Flat Rp 26k | Z5: Driver Flat Rp 30k`,
+        val: z1,
+        unit: '/zona'
+      })
+    }
+
+    if (mitraProfile.motor_km != null && mitraProfile.motor_km > 0) {
+      list.push({ key: 'km', label: 'Skema KM', valLabel: formatRp(mitraProfile.motor_km), val: mitraProfile.motor_km, unit: '/km' })
+    }
+    if (mitraProfile.motor_titik != null && mitraProfile.motor_titik > 0) {
+      list.push({ key: 'titik', label: 'Skema Titik', valLabel: formatRp(mitraProfile.motor_titik), val: mitraProfile.motor_titik, unit: '/titik' })
+    }
+    if (mitraProfile.motor_dimensi != null && mitraProfile.motor_dimensi > 0) {
+      list.push({ key: 'dimensi', label: 'Skema Dimensi', valLabel: formatRp(mitraProfile.motor_dimensi), val: mitraProfile.motor_dimensi, unit: '/dm³' })
+    }
+    if (mitraProfile.motor_berat != null && mitraProfile.motor_berat > 0) {
+      list.push({ key: 'berat', label: 'Skema Berat', valLabel: formatRp(mitraProfile.motor_berat), val: mitraProfile.motor_berat, unit: '/kg' })
+    }
+
+    return list
   }, [mitraProfile])
 
   const mobilRates = useMemo(() => {
@@ -155,17 +221,8 @@ export default function CreateOrderPage() {
     return list.filter((r) => r.val != null && r.val > 0)
   }, [mitraProfile])
 
-  // Auto-switch rate when armada changes
-  useEffect(() => {
-    const rates = selectedArmada === 'motor' ? motorRates : mobilRates
-    if (rates.length > 0) {
-      if (!rates.some((r) => r.key === selectedRate)) {
-        setSelectedRate(rates[0].key)
-      }
-    }
-  }, [selectedArmada, motorRates, mobilRates, selectedRate])
-
   const calcPreview = useCallback(async (currentRows: OrderRow[]) => {
+    if (!selectedArmada || !selectedRate) { setPreview(null); return }
     const valid = currentRows.filter((r) => r.nama_apotek.trim() && r.alamat_lengkap.trim())
     if (!valid.length) { setPreview(null); return }
     try {
@@ -423,11 +480,20 @@ export default function CreateOrderPage() {
 
   const handleSubmit = async () => {
     if (isSubmittingRef.current) return   // <-- block second click immediately
+    if (!selectedArmada || !selectedRate) {
+      toast.error('Mohon pilih jenis layanan & skema tarif terlebih dahulu pada Langkah 1.')
+      return
+    }
     const empty = rows.filter((r) => !r.nama_apotek.trim() || !r.alamat_lengkap.trim())
     if (empty.length > 0) { toast.error('Mohon lengkapi Nama Apotek dan Alamat untuk seluruh baris.'); return }
     isSubmittingRef.current = true
     setSubmitting(true)
     try {
+      if (editingOrderNum) {
+        try {
+          await adminAPI.deleteOrder(editingOrderNum)
+        } catch (_) {}
+      }
       await adminAPI.createBulkOrders({
         armada: selectedArmada, rate_type: selectedRate,
         items: rows.map((r) => ({
@@ -438,12 +504,12 @@ export default function CreateOrderPage() {
           invoices: r.invoices,
         }))
       })
-      toast.success('Order berhasil didaftarkan!')
+      toast.success(editingOrderNum ? 'Order berhasil diperbarui! 🎉' : 'Order berhasil didaftarkan! 🎉')
       if (typeof window !== 'undefined') {
         localStorage.removeItem(DRAFT_KEY)
       }
       setHasRestoredDraft(false)
-      setStep(1); setRows([INITIAL_ROW()]); setPreview(null); setInvoiceInput({})
+      setStep(1); setRows([INITIAL_ROW()]); setPreview(null); setInvoiceInput({}); setEditingOrderNum(null)
       router.push('/dashboard/orders')
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } }
@@ -494,7 +560,7 @@ export default function CreateOrderPage() {
 
         {/* Center: Stepper */}
         <div className="md:absolute md:left-1/2 md:-translate-x-1/2 flex items-center justify-center gap-2 my-2 md:my-0">
-          {['Armada & Rate', 'Metode Input', 'Form Order'].map((label, i) => (
+          {['Layanan & Rate', 'Pilihan Metode Input', 'Form Order'].map((label, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
                 step > i + 1
@@ -522,21 +588,7 @@ export default function CreateOrderPage() {
               <RotateCcw className="h-3.5 w-3.5" /> Reset Form
             </button>
           )}
-          {step < 3 ? (
-            <button
-              onClick={() => {
-                const rates = selectedArmada === 'motor' ? motorRates : mobilRates
-                if (rates.length === 0) {
-                  toast.error(`Tidak ada skema tarif aktif untuk armada ${selectedArmada}.`)
-                  return
-                }
-                setStep(step + 1)
-              }}
-              className="flex items-center gap-2 h-10 px-5 rounded-lg border border-border bg-card text-foreground text-sm font-medium hover:bg-accent transition-all shadow-sm w-full md:w-auto justify-center"
-            >
-              Lanjut <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          ) : (
+          {step === 3 && (
             <button
               onClick={handleSubmit}
               disabled={submitting}
@@ -548,19 +600,56 @@ export default function CreateOrderPage() {
         </div>
       </div>
 
-      {/* ─── STEP 1: Pilih Armada & Rate ─── */}
+      {/* Mode Edit Banner */}
+      {editingOrderNum && (
+        <div className="mb-6 p-4 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 flex items-center justify-between flex-wrap gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-bold shrink-0">
+              <Pencil className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm">Mode Edit Order ({editingOrderNum})</h4>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                Anda sedang mengedit order <strong>{editingOrderNum}</strong>. Anda dapat menambah titik alamat baru, mengubah alamat, atau menghapus titik.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingOrderNum(null)
+              setStep(1)
+              setRows([INITIAL_ROW()])
+              setPreview(null)
+              setInvoiceInput({})
+              router.push('/dashboard/create-order')
+              toast.info('Mode Edit dibatalkan')
+            }}
+            className="h-9 px-3.5 rounded-xl bg-amber-200/80 dark:bg-amber-900/80 hover:bg-amber-300 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 text-xs font-bold transition-colors"
+          >
+            Batalkan Edit
+          </button>
+        </div>
+      )}
+
+      {/* ─── STEP 1: Pilih Layanan & Skema Tarif ─── */}
       {step === 1 && (
         <div className="space-y-6">
           <div className="text-center max-w-xl mx-auto mb-4">
-            <h2 className="text-xl font-extrabold text-foreground">Pilih Armada & Skema Tarif</h2>
-            <p className="text-sm text-muted-foreground mt-1">Pilih jenis kendaraan dan skema tarif untuk order ini. Hanya skema tarif aktif yang ditampilkan.</p>
+            <h2 className="text-xl font-extrabold text-foreground">Pilih Layanan & Skema Tarif</h2>
+            <p className="text-sm text-muted-foreground mt-1">Pilih jenis armada dan skema tarif pengiriman yang ingin digunakan. Hanya skema tarif aktif yang ditampilkan.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* Motor Card */}
             <div
               onClick={() => {
-                if (motorRates.length > 0) setSelectedArmada('motor')
+                if (motorRates.length > 0) {
+                  setSelectedArmada('motor')
+                  const targetRate = (selectedRate && motorRates.some(r => r.key === selectedRate)) ? selectedRate : motorRates[0].key
+                  setSelectedRate(targetRate)
+                  setStep(2)
+                }
               }}
               className={cn(
                 "rounded-3xl border-2 p-6 flex flex-col justify-between transition-all duration-300",
@@ -592,12 +681,13 @@ export default function CreateOrderPage() {
                           e.stopPropagation()
                           setSelectedArmada('motor')
                           setSelectedRate(r.key)
+                          setStep(2)
                         }}
                         className={cn(
                           "flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer",
                           selectedArmada === 'motor' && selectedRate === r.key
-                            ? "border-blue-500 bg-background shadow-sm"
-                            : "border-border bg-background/50 hover:border-blue-300"
+                            ? "border-blue-500 bg-background shadow-sm ring-2 ring-blue-500/20"
+                            : "border-border bg-background/50 hover:border-blue-300 hover:bg-background"
                         )}
                       >
                         <span className="text-sm font-semibold text-foreground">{r.label}</span>
@@ -618,7 +708,12 @@ export default function CreateOrderPage() {
             {/* Mobil Card */}
             <div
               onClick={() => {
-                if (mobilRates.length > 0) setSelectedArmada('mobil')
+                if (mobilRates.length > 0) {
+                  setSelectedArmada('mobil')
+                  const targetRate = (selectedRate && mobilRates.some(r => r.key === selectedRate)) ? selectedRate : mobilRates[0].key
+                  setSelectedRate(targetRate)
+                  setStep(2)
+                }
               }}
               className={cn(
                 "rounded-3xl border-2 p-6 flex flex-col justify-between transition-all duration-300",
@@ -650,12 +745,13 @@ export default function CreateOrderPage() {
                           e.stopPropagation()
                           setSelectedArmada('mobil')
                           setSelectedRate(r.key)
+                          setStep(2)
                         }}
                         className={cn(
                           "flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer",
                           selectedArmada === 'mobil' && selectedRate === r.key
-                            ? "border-blue-500 bg-background shadow-sm"
-                            : "border-border bg-background/50 hover:border-blue-300"
+                            ? "border-blue-500 bg-background shadow-sm ring-2 ring-blue-500/20"
+                            : "border-border bg-background/50 hover:border-blue-300 hover:bg-background"
                         )}
                       >
                         <span className="text-sm font-semibold text-foreground">{r.label}</span>
@@ -676,9 +772,20 @@ export default function CreateOrderPage() {
         </div>
       )}
 
-      {/* ─── STEP 2: Metode Input ─── */}
+      {/* ─── STEP 2: Pilih Metode Input ─── */}
       {step === 2 && (
-        <div className="flex flex-col items-center justify-center py-12">
+        <div className="flex flex-col items-center justify-center py-6">
+          <div className="text-center max-w-xl mx-auto mb-8">
+            <h2 className="text-xl font-extrabold text-foreground">Pilih Metode Input</h2>
+            <p className="text-sm text-muted-foreground mt-1">Pilih cara pengisian data pengiriman yang ingin Anda gunakan.</p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv, .xlsx, .xls"
+            className="hidden"
+            onChange={handleFileImport}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
             {[
               { key: 'manual', label: 'Input Manual', icon: '⌨️', desc: 'Isi data pengiriman satu per satu menggunakan form tabel dengan lookup database apotek.' },
@@ -703,7 +810,15 @@ export default function CreateOrderPage() {
               return (
                 <div
                   key={m.key}
-                  onClick={() => setInputMethod(m.key as 'manual' | 'csv')}
+                  onClick={() => {
+                    if (m.key === 'manual') {
+                      setInputMethod('manual')
+                      setStep(3)
+                    } else {
+                      setInputMethod('csv')
+                      fileInputRef.current?.click()
+                    }
+                  }}
                   className={`rounded-3xl border-2 p-8 md:p-10 cursor-pointer transition-all duration-300 min-h-[240px] flex flex-col justify-between ${displayClass}`}
                 >
                   <div className="flex flex-col items-center text-center h-full justify-center">
@@ -714,25 +829,16 @@ export default function CreateOrderPage() {
                 </div>
               )
             })}
-            {inputMethod === 'csv' && (
-              <div className="md:col-span-2 mt-2 space-y-3">
-                <label className="flex flex-col items-center justify-center gap-3 h-36 rounded-2xl border-2 border-dashed border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10 cursor-pointer hover:bg-amber-50/50 transition-all text-amber-600 dark:text-amber-500">
-                  <Upload className="h-8 w-8 text-amber-500" />
-                  <span className="text-sm text-muted-foreground font-medium">Klik untuk upload file Excel (.xlsx / .xls) atau CSV</span>
-                  <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileImport} />
-                </label>
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2">
-                  <p className="text-xs text-muted-foreground">Format Kolom: Nama Apotek, Alamat, Invoice1;Invoice2, Kubik, Berat</p>
-                  <a
-                    href="/sample_order_k24.csv"
-                    download="sample_order_k24.csv"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline"
-                  >
-                    <span>📥 Download File Contoh Format</span>
-                  </a>
-                </div>
-              </div>
-            )}
+          </div>
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-center max-w-4xl w-full px-4 border-t border-border pt-4">
+            <p className="text-xs text-muted-foreground">Format Kolom: Nama Apotek, Alamat, Invoice1;Invoice2, Kubik, Berat</p>
+            <a
+              href="/sample_order_k24.csv"
+              download="sample_order_k24.csv"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline"
+            >
+              <span>📥 Download File Contoh Format</span>
+            </a>
           </div>
         </div>
       )}
@@ -740,13 +846,26 @@ export default function CreateOrderPage() {
       {/* ─── STEP 3: Form Data Order ─── */}
       {step === 3 && (
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h2 className="font-semibold text-foreground">Data Pengiriman</h2>
-              <p className="text-xs text-muted-foreground">Armada: <strong>{selectedArmada.toUpperCase()}</strong> — Rate: <strong>{selectedRate.toUpperCase()}</strong> — {rows.length} titik pengiriman</p>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-extrabold text-foreground">
+                  {inputMethod === 'csv' ? 'Cek Alamat Order' : 'Buat Alamat Order'}
+                </h2>
+                {selectedArmada && selectedRate && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                    {selectedArmada.toUpperCase()} • Rate {selectedRate.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {inputMethod === 'csv'
+                  ? 'Periksa dan pastikan data apotek penerima, alamat pengiriman, serta nomor invoice hasil impor file sudah sesuai.'
+                  : 'Masukkan data apotek penerima, alamat pengiriman, dan nomor invoice secara manual untuk membuat order pengiriman.'}
+              </p>
             </div>
             <button onClick={() => setRows((p) => [...p, INITIAL_ROW()])}
-              className="flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card hover:bg-accent text-sm font-medium transition-colors shadow-sm text-foreground">
+              className="flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card hover:bg-accent text-sm font-medium transition-colors shadow-sm text-foreground shrink-0 self-start sm:self-auto">
               <Plus className="h-4 w-4" /> Tambah Baris
             </button>
           </div>
@@ -1099,5 +1218,20 @@ export default function CreateOrderPage() {
         </div>
       )}
     </DashboardShell>
+  )
+}
+
+export default function CreateOrderPage() {
+  return (
+    <Suspense fallback={
+      <DashboardShell>
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+          <p className="text-sm text-muted-foreground">Memuat form order...</p>
+        </div>
+      </DashboardShell>
+    }>
+      <CreateOrderContent />
+    </Suspense>
   )
 }

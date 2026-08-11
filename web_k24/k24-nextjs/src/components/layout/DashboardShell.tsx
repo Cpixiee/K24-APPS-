@@ -5,6 +5,10 @@ import { cn } from '@/lib/utils'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 
+import { useAuth } from '@/context/AuthContext'
+import { LogOut } from 'lucide-react'
+import { toast } from 'sonner'
+
 interface DashboardShellProps {
   children: React.ReactNode
   onRefresh?: () => void
@@ -20,6 +24,7 @@ export default function DashboardShell({
   onCreateMitra,
   showCreateForm,
 }: DashboardShellProps) {
+  const { impersonatedMitra, stopImpersonation } = useAuth()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -67,6 +72,30 @@ export default function DashboardShell({
           onCreateMitra={onCreateMitra}
           showCreateForm={showCreateForm}
         />
+        {impersonatedMitra && (
+          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white px-4 py-2.5 shadow-md flex items-center justify-between gap-4 text-xs font-medium border-b border-blue-400/30">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="font-bold uppercase tracking-wider text-[10px] bg-white/20 px-2 py-0.5 rounded text-white shrink-0">
+                Remote Akses Mitra
+              </span>
+              <span className="truncate">
+                Anda sedang mengakses akun <strong>{impersonatedMitra.name}</strong> ({impersonatedMitra.email}). Semua order yang dibuat akan terdaftar atas nama Mitra ini.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                stopImpersonation()
+                toast.success('Berhasil keluar dari mode Remote Akses Mitra.')
+              }}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition-all border border-white/20 text-xs shadow-sm hover:scale-105 active:scale-95"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Keluar Remote Akses</span>
+            </button>
+          </div>
+        )}
         <main className="p-4 md:p-6 animate-fade-in">
           {children}
         </main>

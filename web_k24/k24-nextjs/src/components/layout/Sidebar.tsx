@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   BarChart3, Truck, Store, ShoppingBag, FileText,
-  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Radio, Bell
+  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell
 } from 'lucide-react'
 
 interface SubNavItem {
@@ -27,7 +27,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'overview',           label: 'Ringkasan',           icon: BarChart3,   href: '/dashboard/overview' },
-  { key: 'track-live',         label: 'Lacak Live',          icon: Radio,       href: '/dashboard/track-live' },
   { key: 'notifications',      label: 'Notifikasi & Laporan',icon: Bell,        href: '/dashboard/notifications' },
   { key: 'detail-pengantaran', label: 'Detail Pengantaran',  icon: Package,     href: '/dashboard/detail-pengantaran' },
   {
@@ -41,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
       { key: 'drivers-approval', label: 'Approval Pendaftaran Kurir', href: '/dashboard/drivers?tab=unapproved' },
     ]
   },
-  { key: 'mitra',         label: 'Apotek Mitra',     icon: Store,       href: '/dashboard/mitra',        roles: ['ADMIN'] },
+  { key: 'mitra',         label: 'Mitra',            icon: Store,       href: '/dashboard/mitra',        roles: ['ADMIN'] },
   { key: 'dispatch',      label: 'Dispatch Order',   icon: Compass,     href: '/dashboard/dispatch',     roles: ['ADMIN'] },
   { key: 'create-order',  label: 'Buat Order Baru',  icon: ShoppingBag, href: '/dashboard/create-order', roles: ['MITRA'] },
   { key: 'orders',        label: 'Daftar Order',     icon: FileText,    href: '/dashboard/orders' },
@@ -93,8 +92,9 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
   }, [pathname, tabParam])
 
   const visibleItems = NAV_ITEMS.filter((item) => {
+    if (!mounted) return !item.roles
     if (!item.roles) return true
-    return item.roles.includes(user?.role as 'ADMIN' | 'MITRA')
+    return user?.role ? item.roles.includes(user.role as 'ADMIN' | 'MITRA') : false
   })
 
   const isChildActive = (childHref: string) => {

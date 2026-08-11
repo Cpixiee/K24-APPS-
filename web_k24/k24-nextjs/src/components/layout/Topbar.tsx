@@ -12,7 +12,7 @@ const TAB_TITLES: Record<string, { title: string; sub: string }> = {
   'track-live':   { title: 'Lacak Live & Radar Pengiriman', sub: 'Pantau posisi kurir, peta rute GPS, dan log status order real-time.' },
   notifications:  { title: 'Notifikasi & Laporan System', sub: 'Pusat pemberitahuan tugas pengantaran dan konfirmasi order.' },
   drivers:        { title: 'Manajemen Driver',          sub: 'Pantau armada pengiriman obat dan detail registrasi kurir.' },
-  mitra:          { title: 'Apotek Mitra K-24',         sub: 'Daftar dan kelola lokasi outlet apotek mitra franchise K-24.' },
+  mitra:          { title: 'Mitra',                     sub: 'Daftar dan kelola lokasi outlet apotek mitra franchise K-24.' },
   'create-order': { title: 'Buat Order Pengiriman',     sub: 'Kirim pesanan kesehatan secara cepat lewat armada K-24.' },
   dispatch:       { title: 'Dispatch Operator (OTMS)',  sub: 'Penugasan kurir driver dan routing manual pengiriman obat.' },
   orders:         { title: 'Daftar Order',              sub: 'Riwayat semua order bulk yang telah dibuat.' },

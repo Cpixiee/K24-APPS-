@@ -25,6 +25,15 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | null>(null)
 
+function getStableId(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash) % 100000
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<WebNotification[]>([])
@@ -64,8 +73,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const orderEvents: WebNotification[] = []
         ordersList.forEach((o) => {
           const pharm = o?.pharmacy_name || 'PT K-24 Indonesia'
-          const rawId = o?.id || o?.order_id || Math.floor(Math.random() * 1000)
-          const num = o?.order_number || `ORDER-00000${rawId}`
+          const dispatchKey = o?.dispatch_id || o?.parent_order_number || o?.order_number || 'ORDER'
+          const rawId = getStableId(dispatchKey)
+          const num = o?.order_number || dispatchKey
           const customer = o?.customer_name || 'Pelanggan'
           const dateStr = o?.created_at || new Date().toISOString()
           const driverStr = o?.driver_name ? ` (Driver ${o.driver_name})` : ''

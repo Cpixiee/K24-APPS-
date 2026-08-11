@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 
+	"backend_k24apps/internal/middleware"
 	"backend_k24apps/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -180,9 +184,9 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 		defMotorKm := 20000.00
 		defMotorTitik := 10000.00
 		defMotorBerat := 5000.00
-		defMotorZona1 := 10500.00
-		defMotorZona2 := 17500.00
-		defMotorZona3 := 24500.00
+		defMotorZona1 := 0.00
+		defMotorZona2 := 0.00
+		defMotorZona3 := 0.00
 
 		defMobilDimensi := 1500.00
 		defMobilKm := 25000.00
@@ -195,9 +199,9 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 			Message: "Profil belum dikonfigurasi, gunakan data default",
 			Data: models.MitraProfileResponse{
 				UserID: userID, Name: profile.Name,
-				AlamatLengkap: "Jl. Kaliurang KM 5.5, Yogyakarta",
-				PickupName:    "Cabang Yogyakarta",
-				PickupLat:     -7.782889, PickupLong: 110.377042,
+				AlamatLengkap: "Jl. Raya Pasar Minggu No. 28, Pasar Minggu, Jakarta Selatan",
+				PickupName:    "PT K-24 Indonesia Cabang Jakarta",
+				PickupLat:     -6.2019957, PickupLong: 106.8551888,
 				MotorDimensi: &defMotorDimensi, MotorKm: &defMotorKm,
 				MotorTitik: &defMotorTitik, MotorBerat: &defMotorBerat,
 				MotorZona1: &defMotorZona1, MotorZona2: &defMotorZona2, MotorZona3: &defMotorZona3,
@@ -210,4 +214,46 @@ func (h *AdminHandler) GetMitraProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Profil mitra berhasil diambil", Data: profile})
+}
+
+// ImpersonateMitra allows an Admin to generate an impersonated token for a target Mitra user
+func (h *AdminHandler) ImpersonateMitra(c *gin.Context) {
+	mitraIDStr := c.Param("id")
+	mitraID, err := strconv.Atoi(mitraIDStr)
+	if err != nil || mitraID <= 0 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Mitra ID tidak valid"})
+		return
+	}
+	ctx := context.Background()
+
+	var user models.User
+	err = h.DB.QueryRow(ctx,
+		"SELECT id, username, email, name, COALESCE(phone, ''), role FROM users WHERE id = $1 AND role = 'MITRA'",
+		mitraID,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Name, &user.Phone, &user.Role)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Apotek Mitra tidak ditemukan"})
+		return
+	}
+
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "k24_secret_key_change_in_production"
+	}
+
+	token, err := middleware.GenerateToken(user.ID, user.Email, user.Role, secret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal membuat token remote akses"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Berhasil mengaktifkan remote akses ke akun %s (%s)", user.Name, user.Email),
+		Data: map[string]interface{}{
+			"user":  user,
+			"token": token,
+		},
+	})
 }

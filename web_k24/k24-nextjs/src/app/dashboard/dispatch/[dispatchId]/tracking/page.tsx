@@ -27,6 +27,11 @@ export default function DispatchTrackingPage({ params }: { params: Promise<{ dis
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [formattedTime, setFormattedTime] = useState<string>('')
+
+  useEffect(() => {
+    setFormattedTime(lastUpdated.toLocaleTimeString('id-ID'))
+  }, [lastUpdated])
 
   const fetchTracking = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true)
@@ -35,7 +40,9 @@ export default function DispatchTrackingPage({ params }: { params: Promise<{ dis
       const res = await adminAPI.getDispatchLiveTracking(dispatchId)
       if (res.data?.data) {
         setData(res.data.data)
-        setLastUpdated(new Date())
+        const now = new Date()
+        setLastUpdated(now)
+        setFormattedTime(now.toLocaleTimeString('id-ID'))
       }
     } catch (err: any) {
       console.error('[fetchTracking Error]:', err)
@@ -84,7 +91,7 @@ export default function DispatchTrackingPage({ params }: { params: Promise<{ dis
         <div className="flex items-center gap-3 self-start md:self-auto">
           <div className="text-right text-xs text-muted-foreground hidden sm:block">
             <span>Auto update: <strong className="text-emerald-600 dark:text-emerald-400">Setiap 15s</strong></span>
-            <span className="block text-[10px]">Terakhir: {lastUpdated.toLocaleTimeString('id-ID')}</span>
+            <span className="block text-[10px]">{formattedTime ? `Terakhir: ${formattedTime}` : ''}</span>
           </div>
           <button
             onClick={() => fetchTracking(false)}
