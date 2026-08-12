@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { Search, AlertCircle, Check, X, FileText, Eye, Pencil, ShieldAlert, Trash2, Play } from 'lucide-react'
+import { Search, AlertCircle, Check, X, FileText, Eye, Pencil, ShieldAlert, Trash2, Play, ChevronDown, MoreVertical } from 'lucide-react'
 
 interface Driver {
   id: number
@@ -38,6 +38,19 @@ function DriversPageContent() {
   const [activeTab, setActiveTab] = useState<'approved' | 'unapproved'>(
     tabParam === 'unapproved' ? 'unapproved' : 'approved'
   )
+
+  const [activeMenuId, setActiveMenuId] = useState<number | null>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.action-menu-container')) {
+        setActiveMenuId(null)
+      }
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     if (tabParam === 'unapproved') {
@@ -131,7 +144,7 @@ function DriversPageContent() {
   })
 
   const [suspendForm, setSuspendForm] = useState({
-    duration_days: 7, // Default 7 days
+    duration_days: 7,
     reason: '',
   })
 
@@ -185,16 +198,6 @@ function DriversPageContent() {
       toast.error(err.response?.data?.message || 'Gagal memproses suspend driver.')
     } finally {
       setSuspendModal((prev) => ({ ...prev, loading: false }))
-    }
-  }
-
-  const handleUnsuspend = async (driver: Driver) => {
-    try {
-      await adminAPI.unsuspendDriver(driver.id)
-      toast.success(`Suspend akun driver "${driver.name}" berhasil dibatalkan (aktif kembali).`)
-      fetchDrivers()
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Gagal membatalkan suspend.')
     }
   }
 
@@ -680,8 +683,8 @@ function DriversPageContent() {
           <p className="text-sm text-muted-foreground">Tidak ditemukan data kurir yang sesuai kriteria pencarian.</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden min-h-[400px]">
+          <div className="overflow-x-auto pb-16">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
@@ -758,40 +761,69 @@ function DriversPageContent() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex gap-1.5 justify-end">
+                          <div className="relative inline-block text-left action-menu-container">
                             <button
-                              onClick={() => openEditModal(d)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
-                              title="Edit Data Driver"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setActiveMenuId(activeMenuId === d.id ? null : d.id)
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-border bg-background hover:bg-accent text-foreground transition-all shadow-sm"
                             >
-                              <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Edit
+                              <span>Aksi</span>
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                             </button>
 
-                            {d.is_suspended ? (
-                              <button
-                                onClick={() => triggerUnsuspend(d)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
-                                title="Batalkan Suspend Driver Lebih Awal"
-                              >
-                                <Play className="h-3.5 w-3.5" /> Batalkan Suspend
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => openSuspendModal(d)}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 dark:text-amber-300 transition-colors"
-                                title="Suspend Driver"
-                              >
-                                <ShieldAlert className="h-3.5 w-3.5" /> Suspend
-                              </button>
+                            {activeMenuId === d.id && (
+                              <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-border bg-card shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                <button
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    openEditModal(d)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors text-left"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                                  <span>Edit Data Driver</span>
+                                </button>
+
+                                {d.is_suspended ? (
+                                  <button
+                                    onClick={() => {
+                                      setActiveMenuId(null)
+                                      triggerUnsuspend(d)
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-left"
+                                  >
+                                    <Play className="h-3.5 w-3.5" />
+                                    <span>Batalkan Suspend</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setActiveMenuId(null)
+                                      openSuspendModal(d)
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-left"
+                                  >
+                                    <ShieldAlert className="h-3.5 w-3.5" />
+                                    <span>Suspend Driver</span>
+                                  </button>
+                                )}
+
+                                <div className="my-1 border-t border-border" />
+
+                                <button
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    triggerDelete(d)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <span>Hapus Driver Permanen</span>
+                                </button>
+                              </div>
                             )}
-
-                            <button
-                              onClick={() => triggerDelete(d)}
-                              className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/30 dark:hover:bg-red-900/40 dark:text-red-400 transition-colors"
-                              title="Hapus Driver Permanen"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
                           </div>
                         </td>
                       </>
@@ -823,28 +855,52 @@ function DriversPageContent() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex gap-1.5 justify-end">
+                          <div className="relative inline-block text-left action-menu-container">
                             <button
-                              onClick={() => openEditModal(d)}
-                              className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
-                              title="Edit Data Driver"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setActiveMenuId(activeMenuId === d.id ? null : d.id)
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-border bg-background hover:bg-accent text-foreground transition-all shadow-sm"
                             >
-                              <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              <span>Aksi</span>
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                             </button>
-                            <button
-                              onClick={() => triggerApprove(d.id, d.name)}
-                              className="flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
-                              title="Setujui Pendaftaran"
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => triggerReject(d.id, d.name)}
-                              className="flex items-center justify-center h-8 w-8 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/40 dark:text-red-400 transition-colors"
-                              title="Tolak Pendaftaran"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+
+                            {activeMenuId === d.id && (
+                              <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-border bg-card shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-150">
+                                <button
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    openEditModal(d)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors text-left"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                                  <span>Edit Data Registrasi</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    triggerApprove(d.id, d.name)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-left"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  <span>Setujui Pendaftaran</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setActiveMenuId(null)
+                                    triggerReject(d.id, d.name)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  <span>Tolak Pendaftaran</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </>
