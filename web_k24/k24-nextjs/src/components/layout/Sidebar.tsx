@@ -152,8 +152,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
             <Link href="/dashboard/overview" className="flex items-center gap-2.5">
               {isMitraSkin ? (
                 <>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white font-black text-xs shadow-md ring-2 ring-emerald-500/50 shrink-0">
-                    K-24
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm overflow-hidden p-0.5 border border-emerald-300 dark:border-emerald-800 shrink-0">
+                    <img src="/logo_k24.png" alt="Apotek K-24 Logo" className="h-full w-full object-contain" />
                   </div>
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1">
@@ -162,7 +162,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
                         MITRA
                       </span>
                     </div>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-0.5">Sistem Logistik Apotek</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-0.5">Apoteknya Indonesia</span>
                   </div>
                 </>
               ) : (
@@ -181,8 +181,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
 
           {isCollapsed && (
             isMitraSkin ? (
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white font-black text-xs shadow-md ring-2 ring-emerald-500/50 shrink-0">
-                K-24
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm overflow-hidden p-0.5 border border-emerald-300 dark:border-emerald-800 shrink-0">
+                <img src="/logo_k24.png" alt="Apotek K-24 Logo" className="h-full w-full object-contain" />
               </div>
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
