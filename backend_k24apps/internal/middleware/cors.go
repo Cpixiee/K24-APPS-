@@ -30,7 +30,11 @@ func CORSMiddleware(allowedOrigin string) gin.HandlerFunc {
 		}
 
 		if isAllowed {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			if origin != "" {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			} else {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			}
 			c.Writer.Header().Set("Vary", "Origin") // required when not using wildcard
 		}
 

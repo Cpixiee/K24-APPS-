@@ -40,6 +40,7 @@ services:
       DB_PASSWORD: admin123
       DB_NAME: k24
       JWT_SECRET: super_secret_jwt_k24_key_2026
+      CORS_ORIGIN: "*"
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +60,7 @@ services:
     environment:
       NODE_ENV: production
       BACKEND_INTERNAL_URL: http://backend:8087
-      NEXT_PUBLIC_API_URL: http://103.236.140.19:9001
+      NEXT_PUBLIC_API_URL: ""
     depends_on:
       - backend
     networks:

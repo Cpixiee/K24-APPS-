@@ -1,7 +1,7 @@
 // API Service — connects to K-24 Go backend at port 8087
 import axios from 'axios'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8087'
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 // Client-side axios instance (uses localStorage token, for client components)
 export const apiClient = axios.create({
