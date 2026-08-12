@@ -91,7 +91,7 @@ function DriversPageContent() {
     isOpen: boolean
     driverId: number | null
     driverName: string
-    action: 'approve' | 'reject' | 'delete' | null
+    action: 'approve' | 'reject' | 'delete' | 'unsuspend' | null
   }>({
     isOpen: false,
     driverId: null,
