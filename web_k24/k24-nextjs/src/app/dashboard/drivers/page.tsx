@@ -244,6 +244,15 @@ function DriversPageContent() {
     })
   }
 
+  const triggerUnsuspend = (driver: Driver) => {
+    setConfirmModal({
+      isOpen: true,
+      driverId: driver.id,
+      driverName: driver.name,
+      action: 'unsuspend'
+    })
+  }
+
   const processConfirmAction = async () => {
     if (!confirmModal.driverId || !confirmModal.action) return
     setConfirmLoading(true)
@@ -257,6 +266,9 @@ function DriversPageContent() {
       } else if (confirmModal.action === 'delete') {
         await adminAPI.deleteDriver(confirmModal.driverId)
         toast.success(`Akun driver "${confirmModal.driverName}" telah dihapus permanen.`)
+      } else if (confirmModal.action === 'unsuspend') {
+        await adminAPI.unsuspendDriver(confirmModal.driverId)
+        toast.success(`Suspend akun driver "${confirmModal.driverName}" berhasil dibatalkan (aktif kembali).`)
       }
       setConfirmModal({ isOpen: false, driverId: null, driverName: '', action: null })
       fetchDrivers()
@@ -542,26 +554,29 @@ function DriversPageContent() {
     if (!confirmModal.isOpen) return null
     const isApprove = confirmModal.action === 'approve'
     const isDelete = confirmModal.action === 'delete'
+    const isUnsuspend = confirmModal.action === 'unsuspend'
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
         <div className="bg-card w-full max-w-md rounded-2xl border border-border overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
           <div className="p-6 flex flex-col items-center text-center">
             <div className={`h-12 w-12 rounded-full flex items-center justify-center mb-4 ${
-              isApprove 
+              isApprove || isUnsuspend 
                 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' 
                 : 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400'
             }`}>
-              {isApprove ? <Check className="h-6 w-6" /> : isDelete ? <Trash2 className="h-6 w-6" /> : <X className="h-6 w-6" />}
+              {isApprove || isUnsuspend ? <Check className="h-6 w-6" /> : isDelete ? <Trash2 className="h-6 w-6" /> : <X className="h-6 w-6" />}
             </div>
             
             <h3 className="text-lg font-bold text-foreground mb-2">
-              {isApprove ? 'Setujui Pendaftaran' : isDelete ? 'Hapus Akun Driver Permanen' : 'Tolak Pendaftaran'}
+              {isApprove ? 'Setujui Pendaftaran' : isUnsuspend ? 'Batalkan Suspend Driver' : isDelete ? 'Hapus Akun Driver Permanen' : 'Tolak Pendaftaran'}
             </h3>
             
             <p className="text-sm text-muted-foreground leading-relaxed">
               {isApprove 
                 ? `Apakah Anda yakin ingin menyetujui pendaftaran driver "${confirmModal.driverName}"? Akun driver akan aktif dan kurir dapat langsung login ke aplikasi.`
+                : isUnsuspend
+                ? `Apakah Anda yakin ingin membatalkan suspend akun driver "${confirmModal.driverName}" lebih awal? Akun kurir akan langsung aktif kembali dan dapat melakukan login serta menerima tugas.`
                 : isDelete
                 ? `Apakah Anda yakin ingin menghapus akun driver "${confirmModal.driverName}" secara PERMANEN? Seluruh riwayat dan akun kurir akan dihapus.`
                 : `Apakah Anda yakin ingin menolak dan menghapus pendaftaran driver "${confirmModal.driverName}"? Data pendaftaran dan berkas yang diunggah akan dihapus secara permanen.`
@@ -580,14 +595,14 @@ function DriversPageContent() {
             <button
               onClick={processConfirmAction}
               disabled={confirmLoading}
-              className={`inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg text-white transition-colors disabled:opacity-50 min-w-[80px] ${
-                isApprove ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
+              className={`inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg text-white transition-colors disabled:opacity-50 min-w-[100px] ${
+                isApprove || isUnsuspend ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
               }`}
             >
               {confirmLoading ? (
                 <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
               ) : (
-                isApprove ? 'Setujui' : isDelete ? 'Hapus Permanen' : 'Tolak'
+                isApprove ? 'Setujui' : isUnsuspend ? 'Batalkan Suspend' : isDelete ? 'Hapus Permanen' : 'Tolak'
               )}
             </button>
           </div>
@@ -754,11 +769,11 @@ function DriversPageContent() {
 
                             {d.is_suspended ? (
                               <button
-                                onClick={() => handleUnsuspend(d)}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
-                                title="Buka Suspend Driver"
+                                onClick={() => triggerUnsuspend(d)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
+                                title="Batalkan Suspend Driver Lebih Awal"
                               >
-                                <Play className="h-3.5 w-3.5" /> Unsuspend
+                                <Play className="h-3.5 w-3.5" /> Batalkan Suspend
                               </button>
                             ) : (
                               <button
