@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { Search, AlertCircle, Check, X, FileText, Eye, Pencil } from 'lucide-react'
+import { Search, AlertCircle, Check, X, FileText, Eye, Pencil, ShieldAlert, Trash2, Play } from 'lucide-react'
 
 interface Driver {
   id: number
@@ -18,6 +18,9 @@ interface Driver {
   rating?: number
   vehicle_type?: string
   is_approved: boolean
+  is_suspended?: boolean
+  suspended_until?: string
+  suspend_reason?: string
   ktp_url?: string
   sim_url?: string
   stnk_url?: string
@@ -83,12 +86,12 @@ function DriversPageContent() {
     }
   }
 
-  // Confirm Approval / Rejection Modal State
+  // Confirm Approval / Rejection / Deletion Modal State
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean
     driverId: number | null
     driverName: string
-    action: 'approve' | 'reject' | null
+    action: 'approve' | 'reject' | 'delete' | null
   }>({
     isOpen: false,
     driverId: null,
@@ -116,6 +119,22 @@ function DriversPageContent() {
     plate_number: '',
   })
 
+  // Suspend Driver Modal State
+  const [suspendModal, setSuspendModal] = useState<{
+    isOpen: boolean
+    driver: Driver | null
+    loading: boolean
+  }>({
+    isOpen: false,
+    driver: null,
+    loading: false,
+  })
+
+  const [suspendForm, setSuspendForm] = useState({
+    duration_days: 7, // Default 7 days
+    reason: '',
+  })
+
   const openEditModal = (driver: Driver) => {
     setEditForm({
       name: driver.name || '',
@@ -125,6 +144,11 @@ function DriversPageContent() {
       plate_number: driver.plate_number || '',
     })
     setEditModal({ isOpen: true, driver, loading: false })
+  }
+
+  const openSuspendModal = (driver: Driver) => {
+    setSuspendForm({ duration_days: 7, reason: '' })
+    setSuspendModal({ isOpen: true, driver, loading: false })
   }
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -143,8 +167,34 @@ function DriversPageContent() {
       fetchDrivers()
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Gagal memperbarui data driver.')
-    } fontally: {
+    } finally {
       setEditModal((prev) => ({ ...prev, loading: false }))
+    }
+  }
+
+  const handleSaveSuspend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!suspendModal.driver) return
+    setSuspendModal((prev) => ({ ...prev, loading: true }))
+    try {
+      await adminAPI.suspendDriver(suspendModal.driver.id, suspendForm.duration_days, suspendForm.reason)
+      toast.success(`Akun driver "${suspendModal.driver.name}" berhasil di-suspend.`)
+      setSuspendModal({ isOpen: false, driver: null, loading: false })
+      fetchDrivers()
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal memproses suspend driver.')
+    } finally {
+      setSuspendModal((prev) => ({ ...prev, loading: false }))
+    }
+  }
+
+  const handleUnsuspend = async (driver: Driver) => {
+    try {
+      await adminAPI.unsuspendDriver(driver.id)
+      toast.success(`Suspend akun driver "${driver.name}" berhasil dibatalkan (aktif kembali).`)
+      fetchDrivers()
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal membatalkan suspend.')
     }
   }
 
@@ -185,6 +235,15 @@ function DriversPageContent() {
     })
   }
 
+  const triggerDelete = (driver: Driver) => {
+    setConfirmModal({
+      isOpen: true,
+      driverId: driver.id,
+      driverName: driver.name,
+      action: 'delete'
+    })
+  }
+
   const processConfirmAction = async () => {
     if (!confirmModal.driverId || !confirmModal.action) return
     setConfirmLoading(true)
@@ -192,9 +251,12 @@ function DriversPageContent() {
       if (confirmModal.action === 'approve') {
         await adminAPI.approveDriver(confirmModal.driverId)
         toast.success('Pendaftaran driver berhasil disetujui!')
-      } else {
+      } else if (confirmModal.action === 'reject') {
         await adminAPI.rejectDriver(confirmModal.driverId)
         toast.success('Pendaftaran driver berhasil ditolak.')
+      } else if (confirmModal.action === 'delete') {
+        await adminAPI.deleteDriver(confirmModal.driverId)
+        toast.success(`Akun driver "${confirmModal.driverName}" telah dihapus permanen.`)
       }
       setConfirmModal({ isOpen: false, driverId: null, driverName: '', action: null })
       fetchDrivers()
@@ -221,6 +283,7 @@ function DriversPageContent() {
     })
   }, [drivers, search, activeTab])
 
+  // Edit Driver Modal UI
   const renderEditDriverModal = () => {
     if (!editModal.isOpen || !editModal.driver) return null
 
@@ -327,6 +390,85 @@ function DriversPageContent() {
     )
   }
 
+  // Suspend Driver Modal UI
+  const renderSuspendModal = () => {
+    if (!suspendModal.isOpen || !suspendModal.driver) return null
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-card w-full max-w-md rounded-2xl border border-border overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-border bg-amber-50 dark:bg-amber-950/40">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <h3 className="font-bold text-foreground text-sm">Suspend Akun Driver</h3>
+            </div>
+            <button
+              onClick={() => setSuspendModal({ isOpen: false, driver: null, loading: false })}
+              className="h-8 w-8 rounded-lg flex items-center justify-center border border-border hover:bg-accent text-muted-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveSuspend} className="p-6 space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Pilih durasi suspend untuk driver <strong className="text-foreground">{suspendModal.driver.name}</strong>. Selama masa suspend, driver tidak dapat login maupun menerima order.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">Durasi Penangguhan (Suspend)</label>
+              <select
+                value={suspendForm.duration_days}
+                onChange={(e) => setSuspendForm({ ...suspendForm, duration_days: parseInt(e.target.value) })}
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+              >
+                <option value={1}>⏱️ 1 Hari (24 Jam)</option>
+                <option value={3}>⏱️ 3 Hari</option>
+                <option value={7}>⏱️ 7 Hari (1 Minggu)</option>
+                <option value={30}>⏱️ 30 Hari (1 Bulan)</option>
+                <option value={-1}>🚫 Permanen (Selamanya)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">Alasan Suspend</label>
+              <textarea
+                rows={3}
+                required
+                value={suspendForm.reason}
+                onChange={(e) => setSuspendForm({ ...suspendForm, reason: e.target.value })}
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                placeholder="Contoh: Terlalu sering menolak penugasan pickup / pelanggaran aturan pengantaran obat..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setSuspendModal({ isOpen: false, driver: null, loading: false })}
+                disabled={suspendModal.loading}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border bg-background hover:bg-accent text-foreground transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={suspendModal.loading}
+                className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition-colors disabled:opacity-50 min-w-[100px]"
+              >
+                {suspendModal.loading ? (
+                  <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  'Terapkan Suspend'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   const renderDocumentViewer = () => {
     if (!documentModal.isOpen) return null
     return (
@@ -399,6 +541,7 @@ function DriversPageContent() {
   const renderConfirmDialog = () => {
     if (!confirmModal.isOpen) return null
     const isApprove = confirmModal.action === 'approve'
+    const isDelete = confirmModal.action === 'delete'
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -409,17 +552,19 @@ function DriversPageContent() {
                 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' 
                 : 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400'
             }`}>
-              {isApprove ? <Check className="h-6 w-6" /> : <X className="h-6 w-6" />}
+              {isApprove ? <Check className="h-6 w-6" /> : isDelete ? <Trash2 className="h-6 w-6" /> : <X className="h-6 w-6" />}
             </div>
             
             <h3 className="text-lg font-bold text-foreground mb-2">
-              {isApprove ? 'Setujui Pendaftaran' : 'Tolak Pendaftaran'}
+              {isApprove ? 'Setujui Pendaftaran' : isDelete ? 'Hapus Akun Driver Permanen' : 'Tolak Pendaftaran'}
             </h3>
             
             <p className="text-sm text-muted-foreground leading-relaxed">
               {isApprove 
                 ? `Apakah Anda yakin ingin menyetujui pendaftaran driver "${confirmModal.driverName}"? Akun driver akan aktif dan kurir dapat langsung login ke aplikasi.`
-                : `Apakah Anda yakin ingin menolak dan menghapus pendaftaran driver "${confirmModal.driverName}"? Data pendaftaran dan berkas berkas yang diunggah akan dihapus secara permanen.`
+                : isDelete
+                ? `Apakah Anda yakin ingin menghapus akun driver "${confirmModal.driverName}" secara PERMANEN? Seluruh riwayat dan akun kurir akan dihapus.`
+                : `Apakah Anda yakin ingin menolak dan menghapus pendaftaran driver "${confirmModal.driverName}"? Data pendaftaran dan berkas yang diunggah akan dihapus secara permanen.`
               }
             </p>
           </div>
@@ -442,7 +587,7 @@ function DriversPageContent() {
               {confirmLoading ? (
                 <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
               ) : (
-                isApprove ? 'Setujui' : 'Tolak'
+                isApprove ? 'Setujui' : isDelete ? 'Hapus Permanen' : 'Tolak'
               )}
             </button>
           </div>
@@ -456,7 +601,7 @@ function DriversPageContent() {
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Manajemen Driver</h1>
-          <p className="text-sm text-muted-foreground mt-1">Pantau armada pengiriman obat dan persetujuan registrasi kurir.</p>
+          <p className="text-sm text-muted-foreground mt-1">Pantau armada pengiriman obat, suspend, dan registrasi kurir.</p>
         </div>
         
         {/* Tab Switching */}
@@ -532,7 +677,7 @@ function DriversPageContent() {
                   {activeTab === 'approved' ? (
                     <>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status / Akses</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aksi</th>
                     </>
                   ) : (
@@ -549,7 +694,7 @@ function DriversPageContent() {
                   <tr key={d.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-slate-100 text-blue-700 dark:from-blue-900/30 dark:to-slate-900/30 dark:text-blue-300 font-bold">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-slate-100 text-blue-700 dark:from-blue-900/30 dark:to-slate-900/30 dark:text-blue-300 font-bold shrink-0">
                           {d.name?.[0]?.toUpperCase() || 'D'}
                         </div>
                         <div>
@@ -575,7 +720,17 @@ function DriversPageContent() {
                           <span className="text-amber-500">⭐</span> {d.rating ? d.rating.toFixed(1) : '5.0'}
                         </td>
                         <td className="px-4 py-3">
-                          {d.is_active ? (
+                          {d.is_suspended ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700 dark:bg-red-950/40 dark:text-red-400 w-max">
+                                <ShieldAlert className="h-3.5 w-3.5" />
+                                Suspended
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {d.suspended_until ? `s.d. ${new Date(d.suspended_until).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}` : 'Permanen'}
+                              </span>
+                            </div>
+                          ) : d.is_active ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               Online
@@ -588,13 +743,41 @@ function DriversPageContent() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => openEditModal(d)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
-                            title="Edit Data Driver"
-                          >
-                            <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Edit
-                          </button>
+                          <div className="flex gap-1.5 justify-end">
+                            <button
+                              onClick={() => openEditModal(d)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
+                              title="Edit Data Driver"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Edit
+                            </button>
+
+                            {d.is_suspended ? (
+                              <button
+                                onClick={() => handleUnsuspend(d)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
+                                title="Buka Suspend Driver"
+                              >
+                                <Play className="h-3.5 w-3.5" /> Unsuspend
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openSuspendModal(d)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 dark:text-amber-300 transition-colors"
+                                title="Suspend Driver"
+                              >
+                                <ShieldAlert className="h-3.5 w-3.5" /> Suspend
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => triggerDelete(d)}
+                              className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/30 dark:hover:bg-red-900/40 dark:text-red-400 transition-colors"
+                              title="Hapus Driver Permanen"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </>
                     ) : (
@@ -625,7 +808,7 @@ function DriversPageContent() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex gap-2 justify-end">
+                          <div className="flex gap-1.5 justify-end">
                             <button
                               onClick={() => openEditModal(d)}
                               className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
@@ -667,6 +850,7 @@ function DriversPageContent() {
       )}
 
       {renderEditDriverModal()}
+      {renderSuspendModal()}
       {renderDocumentViewer()}
       {renderConfirmDialog()}
     </DashboardShell>

@@ -235,13 +235,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var isApproved bool
 	var ktpUrl, simUrl, stnkUrl string
 
+	var isSuspended bool
+	var suspendedUntil *time.Time
+	var suspendReason string
+
 	if user.Role == "DRIVER" {
 		err = h.DB.QueryRow(ctx,
 			`SELECT plate_number, is_active, rating, COALESCE(vehicle_type, 'motor'), COALESCE(is_approved, false), 
+			        COALESCE(is_suspended, false), suspended_until, COALESCE(suspend_reason, ''),
 			        COALESCE(ktp_url, ''), COALESCE(sim_url, ''), COALESCE(stnk_url, '') 
 			 FROM driver_profiles WHERE user_id = $1`,
 			user.ID,
-		).Scan(&plateNumber, &isActive, &rating, &vehicleType, &isApproved, &ktpUrl, &simUrl, &stnkUrl)
+		).Scan(&plateNumber, &isActive, &rating, &vehicleType, &isApproved, &isSuspended, &suspendedUntil, &suspendReason, &ktpUrl, &simUrl, &stnkUrl)
 
 		if err == pgx.ErrNoRows {
 			// Auto create default profile if missing to prevent crashes
@@ -255,6 +260,27 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Status:  "error",
 				Message: "Gagal memproses profil driver",
+			})
+			return
+		}
+
+		// Auto-lift expired suspension
+		if isSuspended && suspendedUntil != nil && time.Now().After(*suspendedUntil) {
+			_, _ = h.DB.Exec(ctx, "UPDATE driver_profiles SET is_suspended = false, suspended_until = NULL, suspend_reason = '' WHERE user_id = $1", user.ID)
+			isSuspended = false
+		}
+
+		if isSuspended {
+			suspendMsg := "Akun driver Anda sedang di-suspend secara PERMANEN."
+			if suspendedUntil != nil {
+				suspendMsg = fmt.Sprintf("Akun driver Anda di-suspend hingga %s.", suspendedUntil.Format("02 Jan 2006 15:04 WIB"))
+			}
+			if suspendReason != "" {
+				suspendMsg += " Alasan: " + suspendReason
+			}
+			c.JSON(http.StatusForbidden, models.APIResponse{
+				Status:  "error",
+				Message: suspendMsg,
 			})
 			return
 		}

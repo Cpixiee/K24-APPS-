@@ -64,6 +64,12 @@ export const adminAPI = {
   rejectDriver: (id: number) => apiClient.post(`/admin/drivers/${id}/reject`),
   updateDriver: (id: number, data: { name: string; phone?: string; email?: string; vehicle_type?: string; plate_number?: string }) =>
     apiClient.put(`/admin/drivers/${id}`, data),
+  suspendDriver: (id: number, durationDays: number, reason: string) =>
+    apiClient.post(`/admin/drivers/${id}/suspend`, { duration_days: durationDays, reason }),
+  unsuspendDriver: (id: number) =>
+    apiClient.post(`/admin/drivers/${id}/unsuspend`),
+  deleteDriver: (id: number) =>
+    apiClient.delete(`/admin/drivers/${id}`),
   approveRejectOrder: (id: number, approve: boolean) => apiClient.post(`/admin/orders/${id}/approve-reject`, { approve }),
   approveFacture: (id: number | string, approve: boolean) => apiClient.post(`/admin/orders/${id}/approve-facture`, { approve }),
   getPendingDispatchOrders: () => apiClient.get('/admin/dispatch/orders'),

@@ -34,10 +34,13 @@ type Driver struct {
 	KTPUrl         string    `json:"ktp_url"`
 	SIMUrl         string    `json:"sim_url"`
 	STNKUrl        string    `json:"stnk_url"`
-	Role           string    `json:"role"`
-	ProfilePicture string    `json:"profile_picture"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	Role           string     `json:"role"`
+	ProfilePicture string     `json:"profile_picture"`
+	IsSuspended    bool       `json:"is_suspended"`
+	SuspendedUntil *time.Time `json:"suspended_until,omitempty"`
+	SuspendReason  string     `json:"suspend_reason,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // Order represents the order table structure

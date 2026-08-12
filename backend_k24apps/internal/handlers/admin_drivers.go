@@ -15,6 +15,9 @@ import (
 func (h *AdminHandler) GetDrivers(c *gin.Context) {
 	ctx := context.Background()
 
+	// Auto lift expired suspensions
+	_, _ = h.DB.Exec(ctx, "UPDATE driver_profiles SET is_suspended = false, suspended_until = NULL WHERE is_suspended = true AND suspended_until IS NOT NULL AND suspended_until < NOW()")
+
 	query := `
 	SELECT u.id, 
 	       COALESCE(u.username, '') as username, 
@@ -26,6 +29,9 @@ func (h *AdminHandler) GetDrivers(c *gin.Context) {
 	       COALESCE(dp.rating, 5.0) as rating, 
 	       COALESCE(dp.vehicle_type, 'motor') as vehicle_type,
 	       COALESCE(dp.is_approved, false) as is_approved,
+	       COALESCE(dp.is_suspended, false) as is_suspended,
+	       dp.suspended_until,
+	       COALESCE(dp.suspend_reason, '') as suspend_reason,
 	       COALESCE(dp.ktp_url, '') as ktp_url,
 	       COALESCE(dp.sim_url, '') as sim_url,
 	       COALESCE(dp.stnk_url, '') as stnk_url,
@@ -56,6 +62,9 @@ func (h *AdminHandler) GetDrivers(c *gin.Context) {
 			&d.Rating,
 			&d.VehicleType,
 			&d.IsApproved,
+			&d.IsSuspended,
+			&d.SuspendedUntil,
+			&d.SuspendReason,
 			&d.KTPUrl,
 			&d.SIMUrl,
 			&d.STNKUrl,
@@ -68,8 +77,6 @@ func (h *AdminHandler) GetDrivers(c *gin.Context) {
 		}
 		d.Role = "DRIVER"
 
-		// Optimization: If document fields contain large base64 image strings, convert them to lightweight
-		// document API endpoint URLs to avoid transferring 100+ MB payload on driver list loads.
 		if strings.HasPrefix(d.KTPUrl, "data:") || len(d.KTPUrl) > 500 {
 			d.KTPUrl = fmt.Sprintf("/api/admin/drivers/%d/document?type=ktp", d.ID)
 		}
@@ -237,4 +244,114 @@ func (h *AdminHandler) UpdateDriver(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Data driver berhasil diperbarui!"})
+}
+
+// SuspendDriver suspends a driver for a specific number of days (-1 for permanent)
+func (h *AdminHandler) SuspendDriver(c *gin.Context) {
+	driverID := c.Param("id")
+	var req struct {
+		DurationDays int    `json:"duration_days"` // 1, 3, 7, 30, or -1 (permanent)
+		Reason       string `json:"reason"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+
+	var suspendedUntil *time.Time
+	if req.DurationDays > 0 {
+		until := time.Now().AddDate(0, 0, req.DurationDays)
+		suspendedUntil = &until
+	}
+
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = "Pelanggaran aturan operasional pengantaran"
+	}
+
+	res, err := h.DB.Exec(ctx,
+		`UPDATE driver_profiles 
+		 SET is_suspended = true, 
+		     suspended_until = $1, 
+		     suspend_reason = $2, 
+		     is_active = false 
+		 WHERE user_id = $3`,
+		suspendedUntil, reason, driverID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses suspend driver: " + err.Error()})
+		return
+	}
+
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Profil driver tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Akun driver berhasil di-suspend!"})
+}
+
+// UnsuspendDriver lifts the suspension from a driver's account
+func (h *AdminHandler) UnsuspendDriver(c *gin.Context) {
+	driverID := c.Param("id")
+	ctx := context.Background()
+
+	res, err := h.DB.Exec(ctx,
+		`UPDATE driver_profiles 
+		 SET is_suspended = false, 
+		     suspended_until = NULL, 
+		     suspend_reason = '' 
+		 WHERE user_id = $1`,
+		driverID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal membatalkan suspend driver: " + err.Error()})
+		return
+	}
+
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Profil driver tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Suspend akun driver berhasil dibatalkan (aktif kembali)"})
+}
+
+// DeleteDriver permanently deletes a driver user and profile
+func (h *AdminHandler) DeleteDriver(c *gin.Context) {
+	driverID := c.Param("id")
+	ctx := context.Background()
+
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memulai transaksi: " + err.Error()})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Unbind active orders assigned to this driver
+	_, _ = tx.Exec(ctx, "UPDATE orders SET driver_id = NULL WHERE driver_id = $1 AND status != 'COMPLETED'", driverID)
+
+	// Delete profile and user
+	_, _ = tx.Exec(ctx, "DELETE FROM driver_profiles WHERE user_id = $1", driverID)
+	resUser, err := tx.Exec(ctx, "DELETE FROM users WHERE id = $1 AND role = 'DRIVER'", driverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menghapus user driver: " + err.Error()})
+		return
+	}
+
+	if resUser.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "Driver tidak ditemukan"})
+		return
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan perubahan: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Akun driver berhasil dihapus secara permanen"})
 }
