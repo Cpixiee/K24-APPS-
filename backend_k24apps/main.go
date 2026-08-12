@@ -161,6 +161,8 @@ func main() {
 			admin.GET("/drivers/:id/document", adminHandler.GetDriverDocument)
 			admin.POST("/drivers/:id/approve", adminHandler.ApproveDriver)
 			admin.POST("/drivers/:id/reject", adminHandler.RejectDriver)
+			admin.PUT("/drivers/:id", adminHandler.UpdateDriver)
+			admin.POST("/drivers/:id/update", adminHandler.UpdateDriver)
 			admin.GET("/mitra", adminHandler.GetMitra)
 			admin.POST("/mitra", adminHandler.CreateMitra)
 			admin.POST("/mitra/:id/impersonate", adminHandler.ImpersonateMitra)

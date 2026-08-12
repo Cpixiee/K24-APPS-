@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { Search, AlertCircle, Check, X, FileText, Eye } from 'lucide-react'
+import { Search, AlertCircle, Check, X, FileText, Eye, Pencil } from 'lucide-react'
 
 interface Driver {
   id: number
@@ -48,6 +48,8 @@ function DriversPageContent() {
     setActiveTab(tab)
     router.replace(`/dashboard/drivers?tab=${tab}`, { scroll: false })
   }
+
+  // Document Viewer Modal State
   const [documentModal, setDocumentModal] = useState<{
     isOpen: boolean
     loading: boolean
@@ -58,7 +60,6 @@ function DriversPageContent() {
   }>({ isOpen: false, loading: false, title: '', src: '' })
 
   const openDocModal = async (title: string, rawSrc: string, driverId: number, driverName: string, docType: string) => {
-    // Open modal instantly with loading indicator
     setDocumentModal({
       isOpen: true,
       loading: true,
@@ -82,6 +83,7 @@ function DriversPageContent() {
     }
   }
 
+  // Confirm Approval / Rejection Modal State
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean
     driverId: number | null
@@ -94,6 +96,57 @@ function DriversPageContent() {
     action: null,
   })
   const [confirmLoading, setConfirmLoading] = useState(false)
+
+  // Edit Driver Modal State
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean
+    driver: Driver | null
+    loading: boolean
+  }>({
+    isOpen: false,
+    driver: null,
+    loading: false,
+  })
+
+  const [editForm, setEditForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    vehicle_type: 'motor',
+    plate_number: '',
+  })
+
+  const openEditModal = (driver: Driver) => {
+    setEditForm({
+      name: driver.name || '',
+      phone: driver.phone || '',
+      email: driver.email || '',
+      vehicle_type: (driver.vehicle_type || 'motor').toLowerCase(),
+      plate_number: driver.plate_number || '',
+    })
+    setEditModal({ isOpen: true, driver, loading: false })
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editModal.driver) return
+    if (!editForm.name.trim()) {
+      toast.error('Nama driver tidak boleh kosong.')
+      return
+    }
+
+    setEditModal((prev) => ({ ...prev, loading: true }))
+    try {
+      await adminAPI.updateDriver(editModal.driver.id, editForm)
+      toast.success(`Data driver "${editForm.name}" berhasil diperbarui!`)
+      setEditModal({ isOpen: false, driver: null, loading: false })
+      fetchDrivers()
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal memperbarui data driver.')
+    } fontally: {
+      setEditModal((prev) => ({ ...prev, loading: false }))
+    }
+  }
 
   const fetchDrivers = useCallback(async (isInitial = false) => {
     if (isInitial || drivers.length === 0) {
@@ -160,12 +213,119 @@ function DriversPageContent() {
         (d.name || '').toLowerCase().includes(q) ||
         (d.username || '').toLowerCase().includes(q) ||
         (d.email || '').toLowerCase().includes(q) ||
-        (d.plate_number || '').toLowerCase().includes(q)
+        (d.plate_number || '').toLowerCase().includes(q) ||
+        (d.phone || '').toLowerCase().includes(q)
       
       const matchesApproval = activeTab === 'approved' ? Boolean(d.is_approved) : !d.is_approved
       return matchesSearch && matchesApproval
     })
   }, [drivers, search, activeTab])
+
+  const renderEditDriverModal = () => {
+    if (!editModal.isOpen || !editModal.driver) return null
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="bg-card w-full max-w-lg rounded-2xl border border-border overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-border bg-muted/20">
+            <div className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="font-bold text-foreground text-sm">Edit Data Driver / Kurir</h3>
+            </div>
+            <button
+              onClick={() => setEditModal({ isOpen: false, driver: null, loading: false })}
+              className="h-8 w-8 rounded-lg flex items-center justify-center border border-border hover:bg-accent text-muted-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">Nama Lengkap Driver</label>
+              <input
+                type="text"
+                required
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                placeholder="Contoh: Budi Santoso"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">No. Telepon / WhatsApp</label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="08123456789"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">Email Driver</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="driver@k24.com"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">Jenis Kendaraan / Armada</label>
+                <select
+                  value={editForm.vehicle_type}
+                  onChange={(e) => setEditForm({ ...editForm, vehicle_type: e.target.value })}
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="motor">🏍️ Motor</option>
+                  <option value="mobil">🚗 Mobil</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">Nomor Plat Kendaraan</label>
+                <input
+                  type="text"
+                  value={editForm.plate_number}
+                  onChange={(e) => setEditForm({ ...editForm, plate_number: e.target.value.toUpperCase() })}
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="AB 1234 CD"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setEditModal({ isOpen: false, driver: null, loading: false })}
+                disabled={editModal.loading}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border bg-background hover:bg-accent text-foreground transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={editModal.loading}
+                className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 min-w-[100px]"
+              >
+                {editModal.loading ? (
+                  <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  'Simpan Perubahan'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
   const renderDocumentViewer = () => {
     if (!documentModal.isOpen) return null
@@ -339,7 +499,7 @@ function DriversPageContent() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Cari driver berdasarkan nama, plat, email..."
+            placeholder="Cari driver berdasarkan nama, plat, email, no HP..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -373,6 +533,7 @@ function DriversPageContent() {
                     <>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aksi</th>
                     </>
                   ) : (
                     <>
@@ -388,7 +549,7 @@ function DriversPageContent() {
                   <tr key={d.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-slate-100 text-blue-700 dark:from-blue-900/30 dark:to-slate-900/30 dark:text-blue-300">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-slate-100 text-blue-700 dark:from-blue-900/30 dark:to-slate-900/30 dark:text-blue-300 font-bold">
                           {d.name?.[0]?.toUpperCase() || 'D'}
                         </div>
                         <div>
@@ -426,6 +587,15 @@ function DriversPageContent() {
                             </span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => openEditModal(d)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
+                            title="Edit Data Driver"
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /> Edit
+                          </button>
+                        </td>
                       </>
                     ) : (
                       <>
@@ -456,6 +626,13 @@ function DriversPageContent() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => openEditModal(d)}
+                              className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-background hover:bg-accent text-foreground transition-colors"
+                              title="Edit Data Driver"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                            </button>
                             <button
                               onClick={() => triggerApprove(d.id, d.name)}
                               className="flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors"
@@ -489,6 +666,7 @@ function DriversPageContent() {
         </div>
       )}
 
+      {renderEditDriverModal()}
       {renderDocumentViewer()}
       {renderConfirmDialog()}
     </DashboardShell>
