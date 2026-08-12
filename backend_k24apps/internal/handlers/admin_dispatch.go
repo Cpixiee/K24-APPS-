@@ -411,7 +411,7 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 		return
 	}
 
-	// 4. Calculate sequential routing with Auto-Sorting by Zone Hierarchy (Zona 1 -> Zona 2 -> Zona 3 -> Non-Zona)
+	// 4. Calculate sequential routing with Auto-Sorting by Zone Hierarchy & pure nearest neighbor distance from origin
 	type orderSeqItem struct {
 		orderID int
 		zona    int
@@ -422,15 +422,20 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 	seqItems := []orderSeqItem{}
 	for _, oid := range req.Sequence {
 		o := ordersMap[oid]
+		rec, _ := findRecipient(h.DB, o.customerName, o.deliveryAddress)
 		var destLat, destLng float64
 		var zVal int
-		err := tx.QueryRow(ctx,
-			"SELECT latitude, longitude, COALESCE(zona, 99) FROM alamat_penerima WHERE nama_apotek = $1 AND alamat_lengkap = $2 LIMIT 1",
-			o.customerName, o.deliveryAddress,
-		).Scan(&destLat, &destLng, &zVal)
-		if err != nil {
-			destLat = originLat + (float64(oid%100) * 0.001)
-			destLng = originLong + (float64(oid%100) * 0.001)
+		if rec != nil && rec.Latitude != 0 && rec.Longitude != 0 {
+			destLat = rec.Latitude
+			destLng = rec.Longitude
+			zVal = rec.Zona
+		} else {
+			var geoErr error
+			destLat, destLng, geoErr = geocodeAddress(o.deliveryAddress, originLat, originLong)
+			if geoErr != nil || destLat == 0 || destLng == 0 {
+				destLat = originLat + (float64(oid%100) * 0.001)
+				destLng = originLong + (float64(oid%100) * 0.001)
+			}
 			zVal = 99
 		}
 		if zVal <= 0 {
@@ -475,30 +480,33 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 	for i, orderID := range orderedSequence {
 		o := ordersMap[orderID]
 
-		// Get destination coordinates from alamat_penerima
+		// Get destination coordinates using findRecipient for exact match
+		rec, _ := findRecipient(h.DB, o.customerName, o.deliveryAddress)
 		var destLat, destLng float64
-		err = tx.QueryRow(ctx,
-			"SELECT latitude, longitude FROM alamat_penerima WHERE nama_apotek = $1 AND alamat_lengkap = $2 LIMIT 1",
-			o.customerName, o.deliveryAddress,
-		).Scan(&destLat, &destLng)
-		if err != nil {
-			destLat, destLng, _ = geocodeAddress(o.deliveryAddress, originLat, originLong)
+		if rec != nil && rec.Latitude != 0 && rec.Longitude != 0 {
+			destLat = rec.Latitude
+			destLng = rec.Longitude
+		} else {
+			var geoErr error
+			destLat, destLng, geoErr = geocodeAddress(o.deliveryAddress, originLat, originLong)
+			if geoErr != nil || destLat == 0 || destLng == 0 {
+				destLat = originLat + (float64(orderID%100) * 0.001)
+				destLng = originLong + (float64(orderID%100) * 0.001)
+			}
 		}
 
 		// Calculate segment distance: from last point to current destination
 		segmentDist, _ := calculateDistance(h.DB, lastLat, lastLng, destLat, destLng)
+		if segmentDist < 0.1 {
+			segmentDist = 1.0
+		}
 		totalDistance += segmentDist
-
-		// Update last position to current stop for sequential distance calculation
-		lastLat = destLat
-		lastLng = destLng
 
 		// Calculate segment argo
 		segmentArgo := math.Round(calcRowPrice(commonRateType, activeRate, segmentDist, o.kubik, o.berat, i))
 		totalArgo += segmentArgo
 
 		// Insert into dispatch_id_detail
-		// First item in sequence gets status 'DELIVERING' in sequence detail, others 'PENDING'
 		statusPengantaran := "PENDING"
 		if i == 0 {
 			statusPengantaran = "DELIVERING"
@@ -517,11 +525,11 @@ func (h *AdminHandler) CreateDispatchGroup(c *gin.Context) {
 			return
 		}
 
-		// Update order row: assign driver, preserve calculated delivery fee if > 0, update status
+		// Update order row: assign driver, set calculated segment fee, update status
 		_, err = tx.Exec(ctx,
 			`UPDATE orders 
 			 SET driver_id = $1, 
-			     delivery_fee = CASE WHEN delivery_fee > 0 THEN delivery_fee ELSE $2 END, 
+			     delivery_fee = $2, 
 			     dispatch_id = $3, 
 			     distance_km = $4, 
 			     status = 'WAITING_FOR_PICKUP'

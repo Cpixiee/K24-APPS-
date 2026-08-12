@@ -161,10 +161,17 @@ func (h *AdminHandler) GetDispatchLiveTracking(c *gin.Context) {
 		LEFT JOIN LATERAL (
 			SELECT latitude, longitude 
 			FROM alamat_penerima 
-			WHERE nama_apotek = o.customer_name AND alamat_lengkap = o.delivery_address 
+			WHERE (latitude != 0 AND longitude != 0) 
+			  AND (
+			    LOWER(TRIM(nama_apotek)) = LOWER(TRIM(REGEXP_REPLACE(o.customer_name, '\s*\(.*?\)', '')))
+			    OR LOWER(TRIM(o.customer_name)) LIKE '%' || LOWER(TRIM(nama_apotek)) || '%'
+			    OR LOWER(TRIM(nama_apotek)) LIKE '%' || LOWER(TRIM(o.customer_name)) || '%'
+			    OR (alamat_lengkap IS NOT NULL AND LOWER(TRIM(alamat_lengkap)) = LOWER(TRIM(o.delivery_address)))
+			  )
+			ORDER BY CASE WHEN LOWER(TRIM(nama_apotek)) = LOWER(TRIM(REGEXP_REPLACE(o.customer_name, '\s*\(.*?\)', ''))) THEN 1 ELSE 2 END
 			LIMIT 1
 		) ap ON true
-		WHERE o.dispatch_id = $1 OR o.order_number = $1
+		WHERE o.dispatch_id = $1 OR o.order_number = $1 OR o.parent_order_number = $1
 		ORDER BY COALESCE(d.sequence_number, 1) ASC, o.id ASC`
 
 	rows, err := h.DB.Query(ctx, stopsQuery, dispatchID)
@@ -179,6 +186,24 @@ func (h *AdminHandler) GetDispatchLiveTracking(c *gin.Context) {
 				&stop.Status, &medicineSummary, &stop.Lat, &stop.Lng,
 			)
 			if errScan == nil {
+				// Fallback coordinate resolution if LATERAL join yielded 0.0
+				if stop.Lat == 0 || stop.Lng == 0 {
+					rec, _ := findRecipient(h.DB, stop.CustomerName, stop.DeliveryAddress)
+					if rec != nil && rec.Latitude != 0 && rec.Longitude != 0 {
+						stop.Lat = rec.Latitude
+						stop.Lng = rec.Longitude
+					} else {
+						gLat, gLng, errGeo := geocodeAddress(stop.DeliveryAddress, resp.PharmacyLat, resp.PharmacyLng)
+						if errGeo == nil && gLat != 0 {
+							stop.Lat = gLat
+							stop.Lng = gLng
+						} else {
+							stop.Lat = resp.PharmacyLat + (float64(stop.SequenceNumber) * 0.005)
+							stop.Lng = resp.PharmacyLng + (float64(stop.SequenceNumber) * 0.005)
+						}
+					}
+				}
+
 				// Parse invoices list from medicine_summary
 				stop.Invoices = []string{}
 				if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
