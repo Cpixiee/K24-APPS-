@@ -509,10 +509,19 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 	       o.medicine_summary, o.checked_invoices,
 	       COALESCE(o.delivery_address, '') as delivery_address,
 	       COALESCE(u_driver.name, '') as driver_name,
+	       COALESCE(u_driver.phone, '') as driver_phone,
+	       COALESCE(dp.plate_number, '') as driver_plate,
+	       COALESCE(dp.vehicle_type, 'motor') as vehicle_type,
 	       o.created_at, o.status, COALESCE(o.dispatch_id, '') as dispatch_id,
-	       COALESCE(o.customer_name, '') as customer_name
+	       COALESCE(o.customer_name, '') as customer_name,
+	       COALESCE(o.reject_reason, '') as reject_reason,
+	       COALESCE(o.reject_note, '') as reject_note,
+	       COALESCE(o.extra_items_note, '') as extra_items_note,
+	       COALESCE(o.unboxing_option, '') as unboxing_option,
+	       COALESCE(o.pickup_note, '') as pickup_note
 	FROM orders o
 	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
+	LEFT JOIN driver_profiles dp ON dp.user_id = o.driver_id
 	WHERE 1=1`
 
 	if role == "MITRA" {
@@ -554,23 +563,34 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 	defer rows.Close()
 
 	type FlatInvoiceRow struct {
-		InvoiceNo    string    `json:"invoice_no"`
-		NamaApotek   string    `json:"nama_apotek"`
-		DriverName   string    `json:"driver_name"`
-		Status       string    `json:"status"`    // "DONE" atau "MISSING"
-		Catatan      string    `json:"catatan"`   // "" for DONE, reason for MISSING
-		CreatedAt    time.Time `json:"created_at"`
-		DispatchID   string    `json:"dispatch_id"`
+		InvoiceNo      string    `json:"invoice_no"`
+		NamaApotek     string    `json:"nama_apotek"`
+		DriverName     string    `json:"driver_name"`
+		DriverPhone    string    `json:"driver_phone"`
+		DriverPlate    string    `json:"driver_plate"`
+		VehicleType    string    `json:"vehicle_type"`
+		Status         string    `json:"status"`    // "DONE", "MISSING", "PENDING"
+		Catatan        string    `json:"catatan"`   // "" for DONE, reason for MISSING
+		CreatedAt      time.Time `json:"created_at"`
+		DispatchID     string    `json:"dispatch_id"`
+		RejectReason   string    `json:"reject_reason,omitempty"`
+		RejectNote     string    `json:"reject_note,omitempty"`
+		ExtraItemsNote string    `json:"extra_items_note,omitempty"`
+		UnboxingOption string    `json:"unboxing_option,omitempty"`
+		PickupNote     string    `json:"pickup_note,omitempty"`
 	}
 
 	var result []FlatInvoiceRow
 
 	for rows.Next() {
-		var parentOrderNumber, medicineSummary, checkedInvoices, deliveryAddress, driverName, orderStatus, dispatchID, customerName string
+		var parentOrderNumber, medicineSummary, checkedInvoices, deliveryAddress, driverName, driverPhone, driverPlate, vehicleType, orderStatus, dispatchID, customerName string
+		var rejectReason, rejectNote, extraItemsNote, unboxingOption, pickupNote string
 		var createdAt time.Time
 
 		if err := rows.Scan(&parentOrderNumber, &medicineSummary, &checkedInvoices,
-			&deliveryAddress, &driverName, &createdAt, &orderStatus, &dispatchID, &customerName); err != nil {
+			&deliveryAddress, &driverName, &driverPhone, &driverPlate, &vehicleType,
+			&createdAt, &orderStatus, &dispatchID, &customerName,
+			&rejectReason, &rejectNote, &extraItemsNote, &unboxingOption, &pickupNote); err != nil {
 			continue
 		}
 
@@ -629,13 +649,21 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 				statusInfo = struct{ Status, Catatan string }{"PENDING", "Belum diperiksa"}
 			}
 			result = append(result, FlatInvoiceRow{
-				InvoiceNo:  invNo,
-				NamaApotek: namaApotek,
-				DriverName: driverName,
-				Status:     statusInfo.Status,
-				Catatan:    statusInfo.Catatan,
-				CreatedAt:  createdAt,
-				DispatchID: dispatchID,
+				InvoiceNo:      invNo,
+				NamaApotek:     namaApotek,
+				DriverName:     driverName,
+				DriverPhone:    driverPhone,
+				DriverPlate:    driverPlate,
+				VehicleType:    vehicleType,
+				Status:         statusInfo.Status,
+				Catatan:        statusInfo.Catatan,
+				CreatedAt:      createdAt,
+				DispatchID:     dispatchID,
+				RejectReason:   rejectReason,
+				RejectNote:     rejectNote,
+				ExtraItemsNote: extraItemsNote,
+				UnboxingOption: unboxingOption,
+				PickupNote:     pickupNote,
 			})
 		}
 
@@ -648,13 +676,21 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 				catatan = "Done"
 			}
 			result = append(result, FlatInvoiceRow{
-				InvoiceNo:  parentOrderNumber,
-				NamaApotek: namaApotek,
-				DriverName: driverName,
-				Status:     status,
-				Catatan:    catatan,
-				CreatedAt:  createdAt,
-				DispatchID: dispatchID,
+				InvoiceNo:      parentOrderNumber,
+				NamaApotek:     namaApotek,
+				DriverName:     driverName,
+				DriverPhone:    driverPhone,
+				DriverPlate:    driverPlate,
+				VehicleType:    vehicleType,
+				Status:         status,
+				Catatan:        catatan,
+				CreatedAt:      createdAt,
+				DispatchID:     dispatchID,
+				RejectReason:   rejectReason,
+				RejectNote:     rejectNote,
+				ExtraItemsNote: extraItemsNote,
+				UnboxingOption: unboxingOption,
+				PickupNote:     pickupNote,
 			})
 		}
 	}
