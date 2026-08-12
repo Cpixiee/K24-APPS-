@@ -85,6 +85,7 @@ export default function OverviewPage() {
   const [invoices, setInvoices] = useState<FlatInvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [periodFilter, setPeriodFilter] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all')
+  const [armadaFilter, setArmadaFilter] = useState<'all' | 'motor' | 'mobil'>('all')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -232,26 +233,39 @@ export default function OverviewPage() {
     }
   }, [loading])
 
+  const getOrderArmada = (medSummary?: string) => {
+    if (!medSummary) return 'motor'
+    const match = medSummary.match(/Armada:\s*(\w+)/i)
+    return match ? match[1].toLowerCase() : 'motor'
+  }
+
+  const armadaFilteredOrders = useMemo(() => {
+    if (armadaFilter === 'all') return filteredOrders
+    return filteredOrders.filter(o => getOrderArmada(o.medicine_summaries) === armadaFilter)
+  }, [filteredOrders, armadaFilter])
+
   const totalOrders = filteredOrders.length || stats?.total_orders || 0
   const totalDrivers = stats?.total_drivers || 0
   const totalMitra = stats?.total_mitra || 0
   const totalInvoices = filteredInvoices.length || (totalOrders > 0 ? totalOrders * 2 : 0)
-  const pendingDispatch = filteredOrders.filter(o => !o.is_dispatched || o.status === 'WAITING_FOR_PICKUP').length
-  const activeDispatch = filteredOrders.filter(o => o.status === 'DELIVERING' || o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE').length
-  const completedOrders = filteredOrders.filter(o => o.status === 'COMPLETED').length
-  const cancelledOrders = filteredOrders.filter(o => o.status === 'CANCELLED').length
 
-  const getPct = (val: number) => totalOrders === 0 ? 0 : Math.round((val / totalOrders) * 100)
+  const pendingDispatch = armadaFilteredOrders.filter(o => !o.is_dispatched || o.status === 'WAITING_FOR_PICKUP').length
+  const activeDispatch = armadaFilteredOrders.filter(o => o.status === 'DELIVERING' || o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE').length
+  const completedOrders = armadaFilteredOrders.filter(o => o.status === 'COMPLETED').length
+  const cancelledOrders = armadaFilteredOrders.filter(o => o.status === 'CANCELLED').length
+  const totalPieOrders = armadaFilteredOrders.length
 
-interface KPICard {
-  title: string
-  value: string
-  icon: any
-  subtitle: string
-  growth?: number
-  positive?: boolean
-  isLive?: boolean
-}
+  const getPct = (val: number) => totalPieOrders === 0 ? 0 : Math.round((val / totalPieOrders) * 100)
+
+  interface KPICard {
+    title: string
+    value: string
+    icon: any
+    subtitle: string
+    growth?: number
+    positive?: boolean
+    isLive?: boolean
+  }
 
   // Distinct KPI cards: Admin & Mitra get dynamic fraction format (e.g. 4/5, 1/5) for order delivery progress
   const kpiCards: KPICard[] = isMitra ? [
@@ -277,15 +291,37 @@ interface KPICard {
     ? pieData.filter(d => d.value > 0)
     : [{ name: 'Tidak Ada Order', value: 1, color: '#e2e8f0' }]
 
-  const performanceData = [
-    { name: '8 Jul', selesai: 1, dikirim: 3 },
-    { name: '9 Jul', selesai: 2, dikirim: 3 },
-    { name: '10 Jul', selesai: 4, dikirim: 6 },
-    { name: '11 Jul', selesai: 6, dikirim: 8 },
-    { name: '12 Jul', selesai: 3, dikirim: 5 },
-    { name: '13 Jul', selesai: 4, dikirim: 5 },
-    { name: '14 Jul', selesai: 2, dikirim: 4 },
-  ]
+  // Dynamic 7-day performance trend line chart calculation from actual database orders
+  const performanceData = useMemo(() => {
+    const days: Record<string, { selesai: number; dikirim: number }> = {}
+    const now = new Date()
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+      const dayLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+      days[dayLabel] = { selesai: 0, dikirim: 0 }
+    }
+
+    filteredOrders.forEach((o) => {
+      if (!o.created_at) return
+      const d = new Date(o.created_at)
+      const dayLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+
+      if (days[dayLabel]) {
+        if (o.status === 'COMPLETED') {
+          days[dayLabel].selesai += 1
+        } else if (o.status === 'DELIVERING' || o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE' || o.status === 'WAITING_FOR_PICKUP') {
+          days[dayLabel].dikirim += 1
+        }
+      }
+    })
+
+    return Object.entries(days).map(([name, val]) => ({
+      name,
+      selesai: val.selesai,
+      dikirim: val.dikirim,
+    }))
+  }, [filteredOrders])
 
   return (
     <DashboardShell onRefresh={fetchData}>
@@ -495,8 +531,14 @@ interface KPICard {
             <div className="flex justify-between items-center gap-4 mb-1">
               <h3 className="font-bold text-base text-foreground">Status Pengiriman Logistik</h3>
               <div className="relative">
-                <select className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-xs font-semibold outline-none appearance-none cursor-pointer">
-                  <option>Semua Armada</option>
+                <select
+                  value={armadaFilter}
+                  onChange={(e) => setArmadaFilter(e.target.value as any)}
+                  className="h-8 rounded-lg border border-border bg-background pl-3 pr-8 text-xs font-semibold outline-none appearance-none cursor-pointer text-foreground"
+                >
+                  <option value="all">Semua Armada</option>
+                  <option value="motor">Motor</option>
+                  <option value="mobil">Mobil</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               </div>
@@ -524,7 +566,7 @@ interface KPICard {
               </ResponsiveContainer>
               <div className="absolute text-center">
                 <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider leading-none">Total</p>
-                <p className="text-2xl font-black text-foreground mt-0.5 leading-none">{totalOrders}</p>
+                <p className="text-2xl font-black text-foreground mt-0.5 leading-none">{totalPieOrders}</p>
                 <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mt-0.5 leading-none">Order</p>
               </div>
             </div>
