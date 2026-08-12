@@ -473,32 +473,6 @@ export default function NotificationsWebPage() {
                     ))
                   })()}
                 </div>
-
-                {/* Chat Bottom Action Input Bar (Disabled System Notice) */}
-                <div className="p-3 sm:px-5 border-t border-border bg-card flex items-center gap-3">
-                  <button
-                    disabled
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-muted/50 text-muted-foreground cursor-not-allowed"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-
-                  <div className="flex-1 relative">
-                    <input
-                      type="text"
-                      disabled
-                      value="Notifikasi sistem - tidak dapat membalas"
-                      className="w-full rounded-full border border-input bg-muted/30 px-4 py-2 text-xs italic text-muted-foreground cursor-not-allowed"
-                    />
-                  </div>
-
-                  <button
-                    disabled
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-muted/50 text-muted-foreground cursor-not-allowed"
-                  >
-                    <Send className="h-4 w-4" />
-                  </button>
-                </div>
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-center p-6">
