@@ -243,18 +243,27 @@ export default function OverviewPage() {
 
   const getPct = (val: number) => totalOrders === 0 ? 0 : Math.round((val / totalOrders) * 100)
 
-  // Distinct KPI cards: Admin gets (Total Driver, Total Invoice, Total Mitra, Perlu Dispatch)
-  // Mitra gets (Total Order, Total Invoice, Sedang Dikirim, Selesai Diantar)
-  const kpiCards = isMitra ? [
-    { title: 'Total Order', value: totalOrders, icon: ShoppingBag, subtitle: 'Total titik alamat order', growth: 15.3, positive: true },
-    { title: 'Total Invoice', value: totalInvoices, icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Sedang Dikirim', value: activeDispatch, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
-    { title: 'Selesai Diantar', value: completedOrders, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
+interface KPICard {
+  title: string
+  value: string
+  icon: any
+  subtitle: string
+  growth?: number
+  positive?: boolean
+  isLive?: boolean
+}
+
+  // Distinct KPI cards: Admin & Mitra get dynamic fraction format (e.g. 4/5, 1/5) for order delivery progress
+  const kpiCards: KPICard[] = isMitra ? [
+    { title: 'Total Order', value: totalOrders.toString(), icon: ShoppingBag, subtitle: 'Total titik alamat order', growth: 15.3, positive: true },
+    { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
+    { title: 'Sedang Dikirim', value: `${activeDispatch}/${totalOrders}`, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Selesai Diantar', value: `${completedOrders}/${totalOrders}`, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
   ] : [
-    { title: 'Total Driver', value: totalDrivers, icon: Truck, subtitle: 'Aktif saat ini', growth: 8.2, positive: true },
-    { title: 'Total Invoice', value: totalInvoices, icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Total Mitra', value: totalMitra, icon: Store, subtitle: 'Apotek mitra terdaftar', growth: 15.3, positive: true },
-    { title: 'Perlu Dispatch', value: pendingDispatch, icon: AlertCircle, subtitle: 'Menunggu penugasan', isLive: true },
+    { title: 'Total Driver', value: totalDrivers.toString(), icon: Truck, subtitle: 'Aktif saat ini', growth: 8.2, positive: true },
+    { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
+    { title: 'Sedang Dikirim', value: `${activeDispatch}/${totalOrders}`, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Selesai Diantar', value: `${completedOrders}/${totalOrders}`, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
   ]
 
   const pieData = [
