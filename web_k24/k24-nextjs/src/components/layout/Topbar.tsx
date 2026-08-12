@@ -55,7 +55,8 @@ function getNotifIcon(title: string) {
 
 export default function Topbar({ onMobileMenuClick, onRefresh, showCreateMitra, onCreateMitra, showCreateForm }: TopbarProps) {
   const pathname = usePathname()
-  const { user } = useAuth()
+  const { user, impersonatedMitra } = useAuth()
+  const isMitraSkin = user?.role === 'MITRA' || !!impersonatedMitra
   const { notifications, unreadCount, markAllAsRead, markNotificationRead } = useNotifications()
   const [showNotifMenu, setShowNotifMenu] = useState(false)
   const [filter, setFilter] = useState<'ALL' | 'UNREAD'>('ALL')
@@ -99,7 +100,15 @@ export default function Topbar({ onMobileMenuClick, onRefresh, showCreateMitra, 
 
       {/* Page title */}
       <div className="flex flex-col flex-1 min-w-0">
-        <h1 className="text-sm font-bold truncate">{pageInfo.title}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-bold truncate">{pageInfo.title}</h1>
+          {isMitraSkin && (
+            <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black border border-emerald-300 dark:border-emerald-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+              K-24 OFFICIAL PORTAL
+            </span>
+          )}
+        </div>
         <p className="text-[11px] text-muted-foreground truncate hidden sm:block leading-tight">{pageInfo.sub}</p>
       </div>
 

@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   BarChart3, Truck, Store, ShoppingBag, FileText,
-  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell
+  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell, CheckCircle2
 } from 'lucide-react'
 
 interface SubNavItem {
@@ -41,7 +41,7 @@ const NAV_ITEMS: NavItem[] = [
     ]
   },
   { key: 'mitra',         label: 'Mitra',            icon: Store,       href: '/dashboard/mitra',        roles: ['ADMIN'] },
-  { key: 'dispatch',      label: 'Dispatch Order',   icon: Compass,     href: '/dashboard/dispatch',     roles: ['ADMIN'] },
+  { key: 'dispatch',      label: 'Dispatch Operator',icon: Compass,     href: '/dashboard/dispatch',     roles: ['ADMIN'] },
   { key: 'create-order',  label: 'Buat Order Baru',  icon: ShoppingBag, href: '/dashboard/create-order', roles: ['MITRA'] },
   { key: 'orders',        label: 'Daftar Order',     icon: FileText,    href: '/dashboard/orders' },
 ]
@@ -54,7 +54,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }: SidebarProps) {
-  const { user, logout } = useAuth()
+  const { user, logout, impersonatedMitra } = useAuth()
+  const isMitraSkin = user?.role === 'MITRA' || !!impersonatedMitra
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -111,7 +112,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
     if (item.children) {
       return item.children.some(child => isChildActive(child.href))
     }
-    return pathname.startsWith(item.href)
+    return pathname === item.href
   }
 
   const handleLogout = () => {
@@ -124,7 +125,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Backdrop for mobile */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 lg:hidden"
@@ -132,7 +133,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
         />
       )}
 
-      {/* Sidebar — always clean white */}
+      {/* Sidebar — K-24 Skin responsive */}
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-sidebar-border',
@@ -149,20 +150,45 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
         )}>
           {!isCollapsed && (
             <Link href="/dashboard/overview" className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
-                <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-extrabold tracking-wide text-foreground leading-none">NINGRAT</span>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Management System</span>
-              </div>
+              {isMitraSkin ? (
+                <>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white font-black text-xs shadow-md ring-2 ring-emerald-500/50 shrink-0">
+                    K-24
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-black tracking-tight text-foreground leading-none">APOTEK K-24</span>
+                      <span className="px-1 py-0.2 text-[8px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800">
+                        MITRA
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-0.5">Sistem Logistik Apotek</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
+                    <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-extrabold tracking-wide text-foreground leading-none">NINGRAT</span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Management System</span>
+                  </div>
+                </>
+              )}
             </Link>
           )}
 
           {isCollapsed && (
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
-              <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
-            </div>
+            isMitraSkin ? (
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white font-black text-xs shadow-md ring-2 ring-emerald-500/50 shrink-0">
+                K-24
+              </div>
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm overflow-hidden p-0.5 border border-border">
+                <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="h-full w-full object-contain" />
+              </div>
+            )
           )}
 
           {/* Desktop collapse toggle */}
@@ -190,14 +216,22 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
             <div className="flex items-center gap-3">
               <div 
                 suppressHydrationWarning 
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 border border-blue-200/60 text-blue-600 font-bold text-sm flex-shrink-0 dark:bg-blue-950/20 dark:text-blue-400"
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-xl font-bold text-sm flex-shrink-0 border shadow-xs",
+                  isMitraSkin
+                    ? "bg-emerald-600 text-white border-emerald-500 ring-2 ring-red-500/30"
+                    : "bg-blue-50 border-blue-200/60 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
+                )}
               >
                 {initials}
               </div>
               <div className="flex-1 min-w-0">
-                <p suppressHydrationWarning className="text-sm font-bold text-foreground truncate">{user?.name || 'User'}</p>
+                <p suppressHydrationWarning className="text-sm font-bold text-foreground truncate flex items-center gap-1">
+                  {user?.name || 'Apotek K-24'}
+                  {isMitraSkin && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+                </p>
                 <p suppressHydrationWarning className="text-xs text-muted-foreground truncate">
-                  {user?.role === 'ADMIN' ? 'Hub Manager' : 'Apotek Mitra K-24'}
+                  {isMitraSkin ? 'Apotek Mitra K-24 (Franchise)' : user?.role === 'ADMIN' ? 'Hub Manager' : 'Staff'}
                 </p>
               </div>
             </div>
