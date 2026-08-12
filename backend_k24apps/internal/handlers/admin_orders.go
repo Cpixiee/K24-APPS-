@@ -1960,20 +1960,64 @@ func (h *AdminHandler) CompletePODOrder(c *gin.Context) {
 
 	// Trigger Notification for driver, mitra, and admin
 	var driverID, mitraID *int
-	var pharmName, orderNum string
-	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &orderNum)
+	var pharmName, orderNum, delivAddress, custName string
+	err = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, order_number, COALESCE(delivery_address, ''), COALESCE(customer_name, '') FROM orders WHERE id::text = $1 OR order_number = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &orderNum, &delivAddress, &custName)
 	if err == nil {
+		targetDispatch := dispatchID
+		if targetDispatch == "" {
+			targetDispatch = parentOrderNum
+		}
+		if targetDispatch == "" {
+			targetDispatch = orderNum
+		}
+
+		var totalOrders, completedOrders int
+		if targetDispatch != "" {
+			_ = h.DB.QueryRow(ctx, "SELECT COUNT(*) FROM orders WHERE dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1", targetDispatch).Scan(&totalOrders)
+			_ = h.DB.QueryRow(ctx, "SELECT COUNT(*) FROM orders WHERE (dispatch_id = $1 OR parent_order_number = $1 OR order_number = $1) AND status = 'COMPLETED'", targetDispatch).Scan(&completedOrders)
+		}
+
+		var driverTitle, driverMsg, mitraTitle, mitraMsg, adminTitle, adminMsg string
+
+		if totalOrders > 1 {
+			remaining := totalOrders - completedOrders
+			if remaining > 0 {
+				driverTitle = fmt.Sprintf("Progress [%d/%d] Order Selesai", completedOrders, totalOrders)
+				driverMsg = fmt.Sprintf("[%d/%d] Order %s ke %s (%s) SELESAI. Sisa %d alamat lagi dalam pengantaran.", completedOrders, totalOrders, orderNum, custName, delivAddress, remaining)
+
+				mitraTitle = fmt.Sprintf("Progress [%d/%d] Alamat Diantar", completedOrders, totalOrders)
+				mitraMsg = fmt.Sprintf("[%d/%d] Order %s di alamat %s (%s) telah SELESAI diantar. Sisa %d alamat lagi.", completedOrders, totalOrders, orderNum, delivAddress, custName, remaining)
+
+				adminTitle = fmt.Sprintf("Progress [%d/%d] Order Batch %s", completedOrders, totalOrders, targetDispatch)
+				adminMsg = fmt.Sprintf("[%d/%d] Order %s (%s) selesai diantar ke %s. Sisa %d alamat.", completedOrders, totalOrders, orderNum, pharmName, custName, remaining)
+			} else {
+				driverTitle = fmt.Sprintf("Pengantaran [%d/%d] Alamat SELESAI", totalOrders, totalOrders)
+				driverMsg = fmt.Sprintf("Seluruh %d alamat pengantaran untuk Order %s (%s) telah SELESAI (COMPLETED).", totalOrders, orderNum, pharmName)
+
+				mitraTitle = fmt.Sprintf("Pesanan SELESAI [%d/%d Alamat Done]", totalOrders, totalOrders)
+				mitraMsg = fmt.Sprintf("Seluruh %d alamat pengantaran untuk Order %s (%s) telah berhasil diantar.", totalOrders, orderNum, pharmName)
+
+				adminTitle = fmt.Sprintf("Pesanan SELESAI [%d/%d Done]", totalOrders, totalOrders)
+				adminMsg = fmt.Sprintf("Seluruh %d alamat untuk Order Batch %s (%s) telah COMPLETED.", totalOrders, targetDispatch, pharmName)
+			}
+		} else {
+			driverTitle = "Pengembalian POD Selesai"
+			driverMsg = fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah SELESAI (COMPLETED).", orderNum, pharmName)
+
+			mitraTitle = "Pesanan SELESAI (COMPLETED)"
+			mitraMsg = fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah disetujui dan SELESAI (DONE).", orderNum, pharmName)
+
+			adminTitle = "Pesanan SELESAI (DONE)"
+			adminMsg = fmt.Sprintf("Order %s (%s) telah resmi COMPLETED setelah verifikasi POD.", orderNum, pharmName)
+		}
+
 		if driverID != nil {
-			title := "Pengembalian POD Selesai"
-			message := fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah SELESAI (COMPLETED).", orderNum, pharmName)
-			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, message)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, driverTitle, driverMsg)
 		}
 		if mitraID != nil {
-			title := "Pesanan SELESAI (COMPLETED)"
-			message := fmt.Sprintf("Verifikasi pengembalian POD pesanan %s (%s) telah disetujui dan SELESAI (DONE).", orderNum, pharmName)
-			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, title, message)
+			_, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, mitraTitle, mitraMsg)
 		}
-		NotifyAdmins(ctx, h.DB, "Pesanan SELESAI (DONE)", fmt.Sprintf("Order %s (%s) telah resmi COMPLETED setelah verifikasi POD.", orderNum, pharmName))
+		NotifyAdmins(ctx, h.DB, adminTitle, adminMsg)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Pengembalian POD berhasil diselesaikan (COMPLETED)"})

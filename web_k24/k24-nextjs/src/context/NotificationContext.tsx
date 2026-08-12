@@ -70,43 +70,84 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const ordersRes = await adminAPI.getOrders()
         const ordersList: any[] = ordersRes.data?.data || []
 
-        const orderEvents: WebNotification[] = []
+        // Group orders by dispatch/batch key to calculate [Completed/Total] batch progress
+        const groupMap = new Map<string, any[]>()
         ordersList.forEach((o) => {
-          const pharm = o?.pharmacy_name || 'PT K-24 Indonesia'
-          const dispatchKey = o?.dispatch_id || o?.parent_order_number || o?.order_number || 'ORDER'
-          const rawId = getStableId(dispatchKey)
-          const num = o?.order_number || dispatchKey
-          const customer = o?.customer_name || 'Pelanggan'
-          const dateStr = o?.created_at || new Date().toISOString()
-          const driverStr = o?.driver_name ? ` (Driver ${o.driver_name})` : ''
+          const key = o?.dispatch_id || o?.parent_order_number || o?.order_number || 'ORDER'
+          if (!groupMap.has(key)) groupMap.set(key, [])
+          groupMap.get(key)!.push(o)
+        })
 
-          if (o?.status === 'DELIVERING') {
-            orderEvents.push({
-              id: 90000 + rawId,
-              driver_id: o?.driver_id || 0,
-              title: 'Pesanan DALAM PENGANTARAN (DELIVERING)',
-              message: `Order ${num} (${pharm}) sedang DALAM PENGANTARAN${driverStr} menuju alamat penerima ${customer}.`,
-              is_read: false,
-              created_at: dateStr,
-            })
-          } else if (o?.status === 'PICKING_UP' || o?.status === 'READY_FOR_PICKUP_FACTURE' || o?.status === 'WAITING_FOR_PICKUP') {
-            orderEvents.push({
-              id: 80000 + rawId,
-              driver_id: o?.driver_id || 0,
-              title: 'Penjemputan APOTEK (PICKING UP)',
-              message: `Order ${num} (${pharm}) telah disiapkan dan siap untuk penjemputan obat di apotek.`,
-              is_read: false,
-              created_at: dateStr,
-            })
-          } else if (o?.status === 'ARRIVED' || o?.status === 'ARRIVED_AT_LOCATION') {
-            orderEvents.push({
-              id: 70000 + rawId,
-              driver_id: o?.driver_id || 0,
-              title: 'Driver TIBA DI LOKASI (ARRIVED)',
-              message: `Driver telah TIBA DI LOKASI alamat tujuan penerima ${customer} untuk order ${num}.`,
-              is_read: false,
-              created_at: dateStr,
-            })
+        const orderEvents: WebNotification[] = []
+
+        groupMap.forEach((orders, dispatchKey) => {
+          const totalCount = orders.length
+          const completedCount = orders.filter((o) => o?.status === 'COMPLETED' || o?.status === 'DELIVERED').length
+          const deliveringCount = orders.filter((o) => o?.status === 'DELIVERING' || o?.status === 'ON_DELIVERY').length
+          const rawId = getStableId(dispatchKey)
+          const firstOrder = orders[0]
+          const pharm = firstOrder?.pharmacy_name || 'PT K-24 Indonesia'
+          const dateStr = firstOrder?.created_at || new Date().toISOString()
+          const driverStr = firstOrder?.driver_name ? ` (Driver ${firstOrder.driver_name})` : ''
+
+          if (totalCount > 1) {
+            // Multi-address batch dispatch tracking notification!
+            if (completedCount > 0 && completedCount < totalCount) {
+              const lastDone = orders.find((o) => o?.status === 'COMPLETED' || o?.status === 'DELIVERED')
+              const doneAddr = lastDone?.delivery_address || lastDone?.customer_name || 'Alamat Penerima'
+              const doneOrderNum = lastDone?.order_number || dispatchKey
+              const remaining = totalCount - completedCount
+              orderEvents.push({
+                id: 95000 + rawId,
+                driver_id: firstOrder?.driver_id || 0,
+                title: `Progress [${completedCount}/${totalCount}] Order Selesai`,
+                message: `[${completedCount}/${totalCount}] Order ${doneOrderNum} di ${doneAddr} telah SELESAI. Sisa ${remaining} alamat lagi dalam pengantaran${driverStr}.`,
+                is_read: false,
+                created_at: dateStr,
+              })
+            } else if (completedCount === totalCount) {
+              orderEvents.push({
+                id: 96000 + rawId,
+                driver_id: firstOrder?.driver_id || 0,
+                title: `Pengantaran [${totalCount}/${totalCount}] Alamat SELESAI`,
+                message: `Seluruh ${totalCount} alamat pengantaran untuk Order ${dispatchKey} (${pharm}) telah SELESAI (COMPLETED)${driverStr}.`,
+                is_read: false,
+                created_at: dateStr,
+              })
+            } else if (deliveringCount > 0) {
+              orderEvents.push({
+                id: 90000 + rawId,
+                driver_id: firstOrder?.driver_id || 0,
+                title: `Batch [0/${totalCount}] DALAM PENGANTARAN`,
+                message: `Order ${dispatchKey} (${pharm}) dengan ${totalCount} alamat pengantaran sedang DALAM PENGANTARAN${driverStr}.`,
+                is_read: false,
+                created_at: dateStr,
+              })
+            }
+          } else {
+            // Single order logic
+            const o = firstOrder
+            const num = o?.order_number || dispatchKey
+            const customer = o?.customer_name || 'Pelanggan'
+            if (o?.status === 'DELIVERING') {
+              orderEvents.push({
+                id: 90000 + rawId,
+                driver_id: o?.driver_id || 0,
+                title: 'Pesanan DALAM PENGANTARAN (DELIVERING)',
+                message: `Order ${num} (${pharm}) sedang DALAM PENGANTARAN${driverStr} menuju alamat penerima ${customer}.`,
+                is_read: false,
+                created_at: dateStr,
+              })
+            } else if (o?.status === 'PICKING_UP' || o?.status === 'READY_FOR_PICKUP_FACTURE' || o?.status === 'WAITING_FOR_PICKUP') {
+              orderEvents.push({
+                id: 80000 + rawId,
+                driver_id: o?.driver_id || 0,
+                title: 'Penjemputan APOTEK (PICKING UP)',
+                message: `Order ${num} (${pharm}) telah disiapkan dan siap untuk penjemputan obat di apotek.`,
+                is_read: false,
+                created_at: dateStr,
+              })
+            }
           }
         })
 

@@ -67,16 +67,20 @@ function extractOrderKey(item: WebNotification): { key: string; titleName: strin
 function getRealNotificationTitle(titleStr: string, messageStr: string) {
   const text = `${titleStr || ''} ${messageStr || ''}`.toLowerCase()
 
+  // Extract explicit progress tag like [1/5] if present
+  const progressMatch = (titleStr || messageStr || '').match(/\[\d+\/\d+\]|Progress \[\d+\/\d+\]|Batch \[\d+\/\d+\]/i)
+  const tag = progressMatch ? `${progressMatch[0]} ` : ''
+
   if (text.includes('selesai') || text.includes('completed') || text.includes('done') || text.includes('pod disetujui')) {
     return {
-      title: 'Pesanan SELESAI (DONE)',
+      title: tag ? `${tag}Pesanan SELESAI` : 'Pesanan SELESAI (DONE)',
       pillBg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300/50',
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
     }
   }
   if (text.includes('pengantaran') || text.includes('delivering') || text.includes('kurir jalan') || text.includes('on delivery')) {
     return {
-      title: 'Pesanan DALAM PENGANTARAN (DELIVERING)',
+      title: tag ? `${tag}DALAM PENGANTARAN` : 'Pesanan DALAM PENGANTARAN (DELIVERING)',
       pillBg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-300/50',
       icon: <Truck className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
     }
