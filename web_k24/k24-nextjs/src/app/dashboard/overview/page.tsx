@@ -144,10 +144,10 @@ export default function OverviewPage() {
   const totalMitra = stats?.total_mitra || 0
   const totalInvoices = filteredInvoices.length || (totalOrders > 0 ? totalOrders * 2 : 0)
 
-  const pendingDispatch = armadaFilteredOrders.filter(o => !o.is_dispatched || o.status === 'WAITING_FOR_PICKUP').length
-  const activeDispatch = armadaFilteredOrders.filter(o => o.status === 'DELIVERING' || o.status === 'PICKING_UP' || o.status === 'READY_FOR_PICKUP_FACTURE').length
+  const pendingDispatch = armadaFilteredOrders.filter(o => !o.is_dispatched && (o.status === 'PENDING' || !o.status)).length
+  const activeDispatch = armadaFilteredOrders.filter(o => o.is_dispatched || ['WAITING_FOR_PICKUP', 'PICKING_UP', 'DELIVERING', 'READY_FOR_PICKUP_FACTURE', 'REJECTED_WAITING_APPROVAL', 'COMPLETED_WAITING_APPROVAL'].includes(o.status)).length
   const completedOrders = armadaFilteredOrders.filter(o => o.status === 'COMPLETED').length
-  const cancelledOrders = armadaFilteredOrders.filter(o => o.status === 'CANCELLED').length
+  const cancelledOrders = armadaFilteredOrders.filter(o => o.status === 'CANCELLED' || o.status === 'REJECTED').length
   const totalPieOrders = armadaFilteredOrders.length
 
   const getPct = (val: number) => totalPieOrders === 0 ? 0 : Math.round((val / totalPieOrders) * 100)
