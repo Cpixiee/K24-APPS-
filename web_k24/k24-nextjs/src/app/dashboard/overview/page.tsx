@@ -172,6 +172,73 @@ export default function OverviewPage() {
     return `${online} Online`
   }, [drivers])
 
+  // 100% Dynamic Alamat / Titik Apotek (Stops) Counts for Cards
+  const totalStops = useMemo(() => {
+    return armadaFilteredOrders.reduce((acc, o) => acc + (o.stop_count || 1), 0)
+  }, [armadaFilteredOrders])
+
+  const activeStops = useMemo(() => {
+    return armadaFilteredOrders
+      .filter(o => o.is_dispatched || ['WAITING_FOR_PICKUP', 'PICKING_UP', 'DELIVERING', 'READY_FOR_PICKUP_FACTURE', 'REJECTED_WAITING_APPROVAL', 'COMPLETED_WAITING_APPROVAL'].includes(o.status))
+      .reduce((acc, o) => acc + (o.stop_count || 1), 0)
+  }, [armadaFilteredOrders])
+
+  const completedStops = useMemo(() => {
+    return armadaFilteredOrders
+      .filter(o => o.status === 'COMPLETED')
+      .reduce((acc, o) => acc + (o.stop_count || 1), 0)
+  }, [armadaFilteredOrders])
+
+  // 100% Dynamic Driver Progress Breakdown List
+  const driverProgressList = useMemo(() => {
+    const map: Record<string, {
+      driver_name: string
+      driver_phone: string
+      pickup_time: string
+      dispatch_id: string
+      total_stops: number
+      completed_stops: number
+      delivering_stops: number
+      addresses: string[]
+    }> = {}
+
+    armadaFilteredOrders.forEach((o) => {
+      if (!o.driver_name) return
+      const key = o.driver_name
+      const timeStr = o.created_at ? new Date(o.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
+
+      const driverInvoices = invoices.filter(i => i.dispatch_id === o.dispatch_id || i.driver_name === o.driver_name)
+      const doneInvs = driverInvoices.filter(i => i.status === 'DONE' || i.catatan === 'Done').length
+      const totalS = o.stop_count || Math.max(1, driverInvoices.length)
+      const compS = o.status === 'COMPLETED' ? totalS : doneInvs
+      const delivS = Math.max(0, totalS - compS)
+
+      const addrList = o.addresses ? o.addresses.split(', ').filter(Boolean) : (o.pharmacy_names ? o.pharmacy_names.split(', ').filter(Boolean) : [])
+
+      if (!map[key]) {
+        map[key] = {
+          driver_name: o.driver_name,
+          driver_phone: o.driver_phone || '',
+          pickup_time: timeStr,
+          dispatch_id: o.dispatch_id,
+          total_stops: totalS,
+          completed_stops: compS,
+          delivering_stops: delivS,
+          addresses: addrList
+        }
+      } else {
+        map[key].total_stops += totalS
+        map[key].completed_stops += compS
+        map[key].delivering_stops += delivS
+        if (addrList.length > 0) {
+          map[key].addresses.push(...addrList)
+        }
+      }
+    })
+
+    return Object.values(map)
+  }, [armadaFilteredOrders, invoices])
+
   interface KPICard {
     title: string
     value: string
@@ -182,17 +249,17 @@ export default function OverviewPage() {
     isLive?: boolean
   }
 
-  // Distinct KPI cards: Admin & Mitra get dynamic fraction format (e.g. 4/5, 1/5) for order delivery progress
+  // Distinct KPI cards: Admin & Mitra get dynamic fraction format (e.g. 7/7 Alamat, 0/7 Alamat) for order delivery progress
   const kpiCards: KPICard[] = isMitra ? [
-    { title: 'Total Order', value: totalOrders.toString(), icon: ShoppingBag, subtitle: 'Total titik alamat order', growth: 15.3, positive: true },
+    { title: 'Total Order', value: totalOrders.toString(), icon: ShoppingBag, subtitle: 'Total batch order', growth: 15.3, positive: true },
     { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Sedang Dikirim', value: `${activeDispatch}/${totalOrders}`, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
-    { title: 'Selesai Diantar', value: `${completedOrders}/${totalOrders}`, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
+    { title: 'Sedang Dikirim', value: `${activeStops}/${totalStops}`, icon: Truck, subtitle: 'Titik alamat dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Selesai Diantar', value: `${completedStops}/${totalStops}`, icon: CheckCircle2, subtitle: 'Titik alamat telah diterima', growth: 95.0, positive: true },
   ] : [
     { title: 'Total Driver', value: totalDrivers.toString(), icon: Truck, subtitle: 'Aktif saat ini', growth: 8.2, positive: true },
     { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Sedang Dikirim', value: `${activeDispatch}/${totalOrders}`, icon: Truck, subtitle: 'Dalam pengantaran', growth: 8.5, positive: true },
-    { title: 'Selesai Diantar', value: `${completedOrders}/${totalOrders}`, icon: CheckCircle2, subtitle: 'Telah diterima apotek', growth: 95.0, positive: true },
+    { title: 'Sedang Dikirim', value: `${activeStops}/${totalStops}`, icon: Truck, subtitle: 'Titik alamat dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Selesai Diantar', value: `${completedStops}/${totalStops}`, icon: CheckCircle2, subtitle: 'Titik alamat telah diterima', growth: 95.0, positive: true },
   ]
 
   const pieData = [
@@ -690,7 +757,86 @@ export default function OverviewPage() {
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
 
+      {/* ─── DETAIL AKTIVITAS PENGANTARAN PER DRIVER (LIVE DRIVER BREAKDOWN) ─── */}
+      <div className="bg-card border border-border p-6 rounded-2xl shadow-xs mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="font-extrabold text-base text-foreground flex items-center gap-2">
+              <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              Detail Aktivitas Pengantaran Driver
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Rincian jam pickup, status pengantaran (sedang diantar / selesai), dan daftar alamat apotek per kurir.</p>
+          </div>
+          <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60 self-start sm:self-auto">
+            {driverProgressList.length} Driver Aktif
+          </span>
+        </div>
+
+        {driverProgressList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground border border-dashed border-border rounded-xl">
+            <Truck className="h-8 w-8 text-muted-foreground/40 mb-2" />
+            <p className="text-xs font-semibold">Belum ada penugasan driver aktif saat ini.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {driverProgressList.map((drv, idx) => (
+              <div key={idx} className="bg-muted/15 border border-border rounded-2xl p-4 flex flex-col justify-between hover:border-blue-300 dark:hover:border-blue-800 transition-all shadow-2xs">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
+                        {drv.driver_name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-xs text-foreground truncate">{drv.driver_name}</h4>
+                        <span className="text-[10px] text-muted-foreground font-mono font-semibold block mt-0.5">
+                          #{drv.dispatch_id}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50 text-[10px] font-bold flex items-center gap-1 shrink-0">
+                      <Clock className="h-3 w-3 text-blue-600" /> {drv.pickup_time}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 my-3 text-center">
+                    <div className="bg-card rounded-xl p-2 border border-border shadow-2xs">
+                      <span className="text-muted-foreground block text-[9px] font-bold uppercase tracking-wider">Total Titik</span>
+                      <span className="font-black text-foreground text-xs mt-0.5 block">{drv.total_stops} Titik</span>
+                    </div>
+                    <div className="bg-blue-50/70 dark:bg-blue-950/40 rounded-xl p-2 border border-blue-200 dark:border-blue-900/50 shadow-2xs">
+                      <span className="text-blue-700 dark:text-blue-300 block text-[9px] font-bold uppercase tracking-wider">Sedang Diantar</span>
+                      <span className="font-black text-blue-600 dark:text-blue-400 text-xs mt-0.5 block">{drv.delivering_stops}/{drv.total_stops}</span>
+                    </div>
+                    <div className="bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl p-2 border border-emerald-200 dark:border-emerald-900/50 shadow-2xs">
+                      <span className="text-emerald-700 dark:text-emerald-300 block text-[9px] font-bold uppercase tracking-wider">Selesai</span>
+                      <span className="font-black text-emerald-600 dark:text-emerald-400 text-xs mt-0.5 block">{drv.completed_stops}/{drv.total_stops}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {drv.addresses.length > 0 && (
+                  <div className="pt-2.5 border-t border-border/80 text-[11px] text-muted-foreground space-y-1 mt-1">
+                    <span className="font-bold text-foreground block text-[10px] uppercase tracking-wider">Daftar Titik Alamat Apotek:</span>
+                    {drv.addresses.slice(0, 3).map((addr, aIdx) => (
+                      <div key={aIdx} className="flex items-center gap-1.5 min-w-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                        <span className="truncate text-foreground font-medium text-[11px]">{addr}</span>
+                      </div>
+                    ))}
+                    {drv.addresses.length > 3 && (
+                      <span className="text-[10px] italic text-muted-foreground block pt-0.5">
+                        + {drv.addresses.length - 3} alamat apotek lainnya...
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ─── PALING BAWAH: Detail Pengantaran Logistik Table Section ─── */}
