@@ -80,18 +80,20 @@ export default function OverviewPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [statsRes, driversRes, ordersRes, invoicesRes] = await Promise.all([
+      const [statsRes, driversRes, ordersRes, invoicesRes] = await Promise.allSettled([
         adminAPI.getStats(),
         adminAPI.getDrivers(),
         adminAPI.getOrders(),
         adminAPI.getFlatInvoices(),
       ])
-      setStats(statsRes.data.data || statsRes.data)
-      setDrivers(driversRes.data.data || driversRes.data || [])
-      setOrders(ordersRes.data.data || ordersRes.data || [])
-      
-      const rawInvoices = invoicesRes.data?.data ?? invoicesRes.data
-      setInvoices(Array.isArray(rawInvoices) ? rawInvoices : [])
+
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data.data || statsRes.value.data)
+      if (driversRes.status === 'fulfilled') setDrivers(driversRes.value.data.data || driversRes.value.data || [])
+      if (ordersRes.status === 'fulfilled') setOrders(ordersRes.value.data.data || ordersRes.value.data || [])
+      if (invoicesRes.status === 'fulfilled') {
+        const rawInvoices = invoicesRes.value.data?.data ?? invoicesRes.value.data
+        setInvoices(Array.isArray(rawInvoices) ? rawInvoices : [])
+      }
     } catch {
       toast.error('Gagal memuat data ringkasan.')
     } finally {
