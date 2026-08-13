@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   FileText, Calendar, AlertTriangle, ShieldAlert,
-  Printer, CheckCircle2, Clock, Truck, User, Search, RefreshCw
+  Printer, CheckCircle2, Clock, Truck, User, Search, RefreshCw, ChevronLeft
 } from 'lucide-react'
 
 interface FlatInvoiceRow {
@@ -28,6 +29,7 @@ interface FlatInvoiceRow {
 }
 
 export default function CatatanKhususPage() {
+  const router = useRouter()
   const [invoices, setInvoices] = useState<FlatInvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -138,6 +140,15 @@ export default function CatatanKhususPage() {
         {/* ─── PAGE HEADER ─── */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card border border-border p-6 rounded-2xl shadow-xs">
           <div>
+            <div className="flex items-center gap-3 mb-2 no-print">
+              <button
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted px-3 py-1.5 rounded-xl border border-border transition-all cursor-pointer"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span>Kembali</span>
+              </button>
+            </div>
             <h1 className="font-black text-xl tracking-tight text-foreground flex items-center gap-2.5">
               <ShieldAlert className="h-6 w-6 text-amber-600 dark:text-amber-400" />
               Catatan Khusus Invoice & Barang Bermasalah
