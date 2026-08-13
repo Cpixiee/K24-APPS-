@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { adminAPI } from '@/lib/api'
 import { toast } from 'sonner'
@@ -18,7 +19,7 @@ interface FlatInvoiceRow {
   driver_phone?: string
   driver_plate?: string
   vehicle_type?: string
-  status: string // "DONE", "MISSING", "PENDING"
+  status: string // "DONE", "MISSING", "PENDING", "REJECTED"
   catatan: string // "Done" or custom reason note
   created_at: string
   dispatch_id: string
@@ -33,6 +34,7 @@ type SortField = 'invoice_no' | 'nama_apotek' | 'created_at'
 type SortOrder = 'asc' | 'desc'
 
 export default function DetailPengantaranPage() {
+  const router = useRouter()
   const [invoices, setInvoices] = useState<FlatInvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -45,10 +47,6 @@ export default function DetailPengantaranPage() {
   // Date Picker State
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [showDatePickerModal, setShowDatePickerModal] = useState(false)
-
-  // Daily Problematic Notes Report Modal & Print State
-  const [showNotesReportModal, setShowNotesReportModal] = useState(false)
-  const [reportDate, setReportDate] = useState<string>('')
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -99,7 +97,7 @@ export default function DetailPengantaranPage() {
     if (statusFilter === 'AMAN') {
       return item.status === 'DONE'
     } else if (statusFilter === 'BERMASALAH') {
-      return item.status === 'MISSING' || item.status === 'PENDING'
+      return item.status === 'MISSING' || item.status === 'PENDING' || item.status === 'REJECTED'
     }
     return true
   })
@@ -133,38 +131,8 @@ export default function DetailPengantaranPage() {
   // Computed KPI Counts
   const totalInvoicesCount = safeInvoices.length
   const totalAddressCount = Array.from(new Set(safeInvoices.map((i) => i.nama_apotek))).length
-  const missingCount = safeInvoices.filter((i) => i.status === 'MISSING').length
+  const missingCount = safeInvoices.filter((i) => i.status === 'MISSING' || i.status === 'REJECTED').length
   const pendingCount = safeInvoices.filter((i) => i.status === 'PENDING').length
-
-  // Problematic Invoices for Daily Report Filter
-  const effectiveReportDate = reportDate || selectedDate || new Date().toISOString().split('T')[0]
-  const problematicReportInvoices = useMemo(() => {
-    return safeInvoices.filter((item) => {
-      // Date filter match
-      if (effectiveReportDate) {
-        const itemDate = new Date(item.created_at).toISOString().split('T')[0]
-        if (itemDate !== effectiveReportDate) return false
-      }
-
-      // Check problem conditions:
-      const isMissing = item.status === 'MISSING'
-      const isPending = item.status === 'PENDING'
-      const hasNote = item.catatan && item.catatan !== 'Done' && item.catatan !== 'Belum diperiksa'
-      const hasReject = Boolean(item.reject_reason || item.reject_note)
-      const hasExtra = Boolean(item.extra_items_note)
-      const hasUnboxing = Boolean(item.unboxing_option && item.unboxing_option !== 'SESUAI')
-
-      return isMissing || isPending || hasNote || hasReject || hasExtra || hasUnboxing
-    })
-  }, [safeInvoices, effectiveReportDate])
-
-  const reportApotekCount = useMemo(() => {
-    return new Set(problematicReportInvoices.map((i) => i.nama_apotek)).size
-  }, [problematicReportInvoices])
-
-  const reportDriverCount = useMemo(() => {
-    return new Set(problematicReportInvoices.map((i) => i.driver_name).filter(Boolean)).size
-  }, [problematicReportInvoices])
 
   // Format date display for header
   const dateFormatted = selectedDate
@@ -173,240 +141,10 @@ export default function DetailPengantaranPage() {
         month: 'long',
         year: 'numeric',
       })
-    : 'Semua Tanggal'
-
-  const reportDateFormatted = effectiveReportDate
-    ? new Date(effectiveReportDate).toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
     : 'Hari Ini'
-
-  const handlePrintPDF = () => {
-    window.print()
-  }
-
-  const renderDailyNotesReportModal = () => {
-    if (!showNotesReportModal) return null
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-        <div className="bg-card w-full max-w-4xl max-h-[90vh] rounded-2xl border border-border overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-          
-          {/* Top Modal Header */}
-          <div className="flex justify-between items-center px-6 py-4 border-b border-border bg-muted/30 no-print">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              <div>
-                <h3 className="font-bold text-foreground text-base">Catatan Harian Invoice & Barang Bermasalah</h3>
-                <p className="text-xs text-muted-foreground">Rekapitulasi berkas/barang tidak sesuai yang perlu verifikasi khusus.</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handlePrintPDF}
-                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm cursor-pointer"
-              >
-                <Printer className="h-4 w-4" /> Cetak / Export PDF
-              </button>
-              <button
-                onClick={() => setShowNotesReportModal(false)}
-                className="h-8 w-8 rounded-lg flex items-center justify-center border border-border hover:bg-accent text-muted-foreground transition-colors cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Modal Filter Bar */}
-          <div className="px-6 py-3 border-b border-border bg-background flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-muted-foreground">Pilih Tanggal Laporan:</label>
-              <input
-                type="date"
-                value={effectiveReportDate}
-                onChange={(e) => setReportDate(e.target.value)}
-                className="bg-muted/40 border border-border rounded-lg px-3 py-1.5 text-xs text-foreground font-medium outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="text-xs text-muted-foreground">
-              Ditemukan <strong className="text-amber-600 font-bold">{problematicReportInvoices.length}</strong> invoice bermasalah pada <span className="font-semibold text-foreground">{reportDateFormatted}</span>
-            </div>
-          </div>
-
-          {/* Report Body (Printable Area) */}
-          <div className="p-6 overflow-y-auto flex-1 bg-background space-y-6" id="printable-problem-report">
-            
-            {/* Print Only Header */}
-            <div className="hidden print:block mb-6 text-center border-b-2 border-black pb-4">
-              <h2 className="text-xl font-bold tracking-tight uppercase">APOTEK K-24 LOGISTICS & DISTRIBUTION</h2>
-              <h3 className="text-base font-semibold uppercase mt-1">LAPORAN CATATAN HARIAN INVOICE & BARANG BERMASALAH</h3>
-              <p className="text-xs mt-1">Tanggal Operasional: <strong>{reportDateFormatted}</strong> | Dicetak Pada: {new Date().toLocaleString('id-ID')}</p>
-            </div>
-
-            {/* Metrics KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider block">Total Case Bermasalah</span>
-                <span className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 block">
-                  {problematicReportInvoices.length.toString().padStart(2, '0')}
-                </span>
-                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">Invoice hilang / rusak / selisih</p>
-              </div>
-
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider block">Apotek Terdampak</span>
-                <span className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1 block">
-                  {reportApotekCount.toString().padStart(2, '0')}
-                </span>
-                <p className="text-[11px] text-blue-700/80 dark:text-blue-400/80 mt-0.5">Titik tujuan yang terkendala</p>
-              </div>
-
-              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block">Driver Terkait</span>
-                <span className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1 block">
-                  {reportDriverCount.toString().padStart(2, '0')}
-                </span>
-                <p className="text-[11px] text-purple-700/80 dark:text-purple-400/80 mt-0.5">Kurir penanggung jawab pengiriman</p>
-              </div>
-            </div>
-
-            {/* Invoices List Table */}
-            {problematicReportInvoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 border border-dashed border-border rounded-xl">
-                <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-2" />
-                <h4 className="font-bold text-foreground">Tidak Ada Catatan Invoice Bermasalah</h4>
-                <p className="text-xs text-muted-foreground mt-1">Seluruh pengiriman obat dan verifikasi invoice pada tanggal ini berjalan lancar.</p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border overflow-hidden bg-card">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead>
-                    <tr className="bg-muted/50 border-b border-border text-muted-foreground font-semibold uppercase tracking-wider">
-                      <th className="px-3.5 py-3">No. Invoice / Dispatch</th>
-                      <th className="px-3.5 py-3">Apotek Penerima</th>
-                      <th className="px-3.5 py-3">Driver Penanggung Jawab</th>
-                      <th className="px-3.5 py-3">Kategori Masalah</th>
-                      <th className="px-3.5 py-3">Detail Catatan / Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {problematicReportInvoices.map((inv, idx) => {
-                      const category = inv.status === 'MISSING'
-                        ? 'Invoice Hilang / Rusak'
-                        : inv.reject_reason || inv.reject_note
-                        ? 'Ditolak Apotek'
-                        : inv.extra_items_note
-                        ? 'Selisih Barang Ekstra'
-                        : inv.status === 'PENDING'
-                        ? 'Belum Diverifikasi'
-                        : 'Verifikasi Tidak Sesuai'
-
-                      const noteDetail = inv.catatan && inv.catatan !== 'Done' && inv.catatan !== 'Belum diperiksa'
-                        ? inv.catatan
-                        : inv.reject_note || inv.reject_reason || inv.extra_items_note || inv.pickup_note || 'Tidak ada rincian catatan tambahan'
-
-                      return (
-                        <tr key={idx} className="hover:bg-muted/20">
-                          <td className="px-3.5 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                            {inv.invoice_no}
-                            {inv.dispatch_id && (
-                              <span className="block text-[10px] text-muted-foreground font-normal">
-                                DSP: #{inv.dispatch_id}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3.5 py-3">
-                            <p className="font-semibold text-foreground">{inv.nama_apotek}</p>
-                          </td>
-                          <td className="px-3.5 py-3">
-                            <p className="font-semibold text-foreground">{inv.driver_name || 'Belum di-assign'}</p>
-                            {inv.driver_phone && (
-                              <p className="text-[10px] text-muted-foreground">{inv.driver_phone}</p>
-                            )}
-                            {inv.driver_plate && (
-                              <span className="inline-block mt-0.5 rounded bg-muted px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground uppercase">
-                                {inv.driver_plate} ({inv.vehicle_type || 'motor'})
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3.5 py-3">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-950/40 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:text-red-300">
-                              <AlertTriangle className="h-3 w-3" />
-                              {category}
-                            </span>
-                          </td>
-                          <td className="px-3.5 py-3 text-foreground leading-relaxed">
-                            {noteDetail}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Print Footer / Signatures */}
-            <div className="pt-8 border-t border-border mt-8 grid grid-cols-2 gap-8 text-center text-xs">
-              <div>
-                <p className="font-semibold text-muted-foreground mb-12">Petugas Verifikator Logistik,</p>
-                <div className="w-36 border-b border-foreground mx-auto" />
-                <p className="font-bold text-foreground mt-1">Goodwheel Admin</p>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground mb-12">Supervisor Operasional K-24,</p>
-                <div className="w-36 border-b border-foreground mx-auto" />
-                <p className="font-bold text-foreground mt-1">( ........................................ )</p>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Modal Footer Bar */}
-          <div className="px-6 py-3 border-t border-border bg-muted/20 flex justify-end no-print">
-            <button
-              onClick={() => setShowNotesReportModal(false)}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-border bg-background hover:bg-accent text-foreground transition-colors cursor-pointer"
-            >
-              Tutup
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <DashboardShell onRefresh={fetchInvoices}>
-      {/* Printable Styles Injection */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-problem-report, #printable-problem-report * {
-            visibility: visible !important;
-          }
-          #printable-problem-report {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            background: white !important;
-            color: black !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
@@ -416,19 +154,16 @@ export default function DetailPengantaranPage() {
           </p>
         </div>
 
-        {/* Action Buttons Group (Date Selector + Daily Notes Button) */}
+        {/* Action Buttons Group (Date Selector + Dedicated Page Button) */}
         <div className="flex flex-wrap items-center gap-3">
           
-          {/* 📋 Button Catatan Khusus Harian */}
+          {/* 📋 Button Buka Halaman Catatan Khusus */}
           <button
-            onClick={() => {
-              setReportDate(selectedDate || new Date().toISOString().split('T')[0])
-              setShowNotesReportModal(true)
-            }}
+            onClick={() => router.push('/dashboard/catatan-khusus')}
             className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-4 py-2.5 rounded-xl shadow-sm text-xs font-bold transition-all cursor-pointer"
           >
-            <ClipboardList className="h-4 w-4" />
-            <span>Catatan Khusus Harian</span>
+            <ShieldAlert className="h-4 w-4" />
+            <span>Buka Halaman Catatan Khusus</span>
             {missingCount > 0 && (
               <span className="ml-1 px-1.5 py-0.5 bg-white text-amber-700 rounded-full text-[10px] font-black animate-pulse">
                 {missingCount}
@@ -848,8 +583,6 @@ export default function DetailPengantaranPage() {
           </div>
         </div>
       </div>
-
-      {renderDailyNotesReportModal()}
     </DashboardShell>
   )
 }

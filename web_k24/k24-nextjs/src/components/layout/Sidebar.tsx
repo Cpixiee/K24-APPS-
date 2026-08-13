@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   BarChart3, Truck, Store, ShoppingBag, FileText,
-  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell, CheckCircle2
+  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell, CheckCircle2, ShieldAlert
 } from 'lucide-react'
 
 interface SubNavItem {
@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'overview',           label: 'Ringkasan',           icon: BarChart3,   href: '/dashboard/overview' },
   { key: 'notifications',      label: 'Notifikasi & Laporan',icon: Bell,        href: '/dashboard/notifications' },
   { key: 'detail-pengantaran', label: 'Detail Pengantaran',  icon: Package,     href: '/dashboard/detail-pengantaran' },
+  { key: 'catatan-khusus',     label: 'Catatan Khusus',      icon: ShieldAlert, href: '/dashboard/catatan-khusus' },
   {
     key: 'drivers',
     label: 'Kelola Driver',
