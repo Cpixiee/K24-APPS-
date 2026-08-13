@@ -191,7 +191,13 @@ export default function OverviewPage() {
       .reduce((acc, o) => acc + (o.stop_count || 1), 0)
   }, [armadaFilteredOrders])
 
-  // 100% Dynamic Driver Progress Breakdown List
+  interface PharmacyStopItem {
+    name: string
+    status: 'DONE' | 'DELIVERING' | 'MISSING'
+    statusLabel: string
+  }
+
+  // 100% Dynamic Driver Progress Breakdown List with Pharmacy Names & Real-Time Status
   const driverProgressList = useMemo(() => {
     const map: Record<string, {
       driver_name: string
@@ -201,7 +207,7 @@ export default function OverviewPage() {
       total_stops: number
       completed_stops: number
       delivering_stops: number
-      addresses: string[]
+      pharmacies: PharmacyStopItem[]
     }> = {}
 
     armadaFilteredOrders.forEach((o) => {
@@ -209,13 +215,33 @@ export default function OverviewPage() {
       const key = o.driver_name
       const timeStr = o.created_at ? new Date(o.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
 
+      // Find matching invoice rows for this dispatch order
       const driverInvoices = invoices.filter(i => i.dispatch_id === o.dispatch_id || i.driver_name === o.driver_name)
-      const doneInvs = driverInvoices.filter(i => i.status === 'DONE' || i.catatan === 'Done').length
-      const totalS = o.stop_count || Math.max(1, driverInvoices.length)
-      const compS = o.status === 'COMPLETED' ? totalS : doneInvs
-      const delivS = Math.max(0, totalS - compS)
+      
+      let pharmacyItems: PharmacyStopItem[] = []
+      if (driverInvoices.length > 0) {
+        pharmacyItems = driverInvoices.map(inv => {
+          const isDone = inv.status === 'DONE' || inv.catatan === 'Done' || inv.catatan === 'Completed'
+          const isMissing = inv.status === 'MISSING' || (inv.catatan && inv.catatan !== 'Done' && inv.catatan !== 'Belum diperiksa' && inv.catatan !== 'Completed')
+          return {
+            name: inv.nama_apotek,
+            status: isDone ? 'DONE' : isMissing ? 'MISSING' : 'DELIVERING',
+            statusLabel: isDone ? 'Diverifikasi Apoteker' : isMissing ? 'Bermasalah / Retur' : 'Sedang Diantar'
+          }
+        })
+      } else {
+        // Fallback to pharmacy_names if invoices array not loaded yet
+        const rawNames = o.pharmacy_names ? o.pharmacy_names.split(' | ') : []
+        pharmacyItems = rawNames.filter(Boolean).map(name => ({
+          name: name,
+          status: 'DELIVERING',
+          statusLabel: 'Sedang Diantar'
+        }))
+      }
 
-      const addrList = o.addresses ? o.addresses.split(', ').filter(Boolean) : (o.pharmacy_names ? o.pharmacy_names.split(', ').filter(Boolean) : [])
+      const compS = pharmacyItems.filter(p => p.status === 'DONE').length
+      const totalS = Math.max(o.stop_count || 1, pharmacyItems.length)
+      const delivS = Math.max(0, totalS - compS)
 
       if (!map[key]) {
         map[key] = {
@@ -226,14 +252,14 @@ export default function OverviewPage() {
           total_stops: totalS,
           completed_stops: compS,
           delivering_stops: delivS,
-          addresses: addrList
+          pharmacies: pharmacyItems
         }
       } else {
         map[key].total_stops += totalS
         map[key].completed_stops += compS
         map[key].delivering_stops += delivS
-        if (addrList.length > 0) {
-          map[key].addresses.push(...addrList)
+        if (pharmacyItems.length > 0) {
+          map[key].pharmacies.push(...pharmacyItems)
         }
       }
     })
@@ -819,20 +845,28 @@ export default function OverviewPage() {
                   </div>
                 </div>
 
-                {drv.addresses.length > 0 && (
-                  <div className="pt-2.5 border-t border-border/80 text-[11px] text-muted-foreground space-y-1 mt-1">
-                    <span className="font-bold text-foreground block text-[10px] uppercase tracking-wider">Daftar Titik Alamat Apotek:</span>
-                    {drv.addresses.slice(0, 3).map((addr, aIdx) => (
-                      <div key={aIdx} className="flex items-center gap-1.5 min-w-0">
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
-                        <span className="truncate text-foreground font-medium text-[11px]">{addr}</span>
+                {drv.pharmacies.length > 0 && (
+                  <div className="pt-2.5 border-t border-border/80 text-[11px] text-muted-foreground space-y-1.5 mt-1">
+                    <span className="font-bold text-foreground block text-[10px] uppercase tracking-wider">DAFTAR TITIK APOTEK PENERIMA:</span>
+                    {drv.pharmacies.map((pharm, pIdx) => (
+                      <div key={pIdx} className="flex items-center justify-between gap-2 min-w-0 bg-background/70 p-2 rounded-xl border border-border/80 shadow-2xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${
+                            pharm.status === 'DONE' ? 'bg-emerald-500' :
+                            pharm.status === 'MISSING' ? 'bg-red-500 animate-pulse' :
+                            'bg-blue-500 animate-pulse'
+                          }`} />
+                          <span className="truncate text-foreground font-bold text-[11px]">{pharm.name}</span>
+                        </div>
+                        <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                          pharm.status === 'DONE' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50' :
+                          pharm.status === 'MISSING' ? 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-900/50' :
+                          'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50'
+                        }`}>
+                          {pharm.statusLabel}
+                        </span>
                       </div>
                     ))}
-                    {drv.addresses.length > 3 && (
-                      <span className="text-[10px] italic text-muted-foreground block pt-0.5">
-                        + {drv.addresses.length - 3} alamat apotek lainnya...
-                      </span>
-                    )}
                   </div>
                 )}
               </div>

@@ -720,17 +720,18 @@ func (h *AdminHandler) GetOrders(c *gin.Context) {
 	userID := userIDVal.(int)
 
 	type OrderSummary struct {
-		DispatchID   string    `json:"dispatch_id"`
-		MitraID      int       `json:"mitra_id"`
-		MitraName    string    `json:"mitra_name"`
-		CreatedAt    time.Time `json:"created_at"`
-		StopCount    int       `json:"stop_count"`
-		TotalFee     float64   `json:"total_fee"`
-		Status       string    `json:"status"`
-		IsDispatched bool      `json:"is_dispatched"`
-		DriverName   string    `json:"driver_name"`
-		DriverPhone  string    `json:"driver_phone"`
-		Addresses    string    `json:"addresses"`
+		DispatchID    string    `json:"dispatch_id"`
+		MitraID       int       `json:"mitra_id"`
+		MitraName     string    `json:"mitra_name"`
+		CreatedAt     time.Time `json:"created_at"`
+		StopCount     int       `json:"stop_count"`
+		TotalFee      float64   `json:"total_fee"`
+		Status        string    `json:"status"`
+		IsDispatched  bool      `json:"is_dispatched"`
+		DriverName    string    `json:"driver_name"`
+		DriverPhone   string    `json:"driver_phone"`
+		Addresses     string    `json:"addresses"`
+		PharmacyNames string    `json:"pharmacy_names"`
 	}
 
 	adminQuery := `
@@ -740,7 +741,8 @@ func (h *AdminHandler) GetOrders(c *gin.Context) {
 	       BOOL_OR(o.driver_id IS NOT NULL) as is_dispatched,
 	       COALESCE(MAX(d.name), '') as driver_name,
 	       COALESCE(MAX(d.phone), '') as driver_phone,
-	       COALESCE(STRING_AGG(o.delivery_address, ', '), '') as addresses
+	       COALESCE(STRING_AGG(o.delivery_address, ' | '), '') as addresses,
+	       COALESCE(STRING_AGG(o.pharmacy_name, ' | '), '') as pharmacy_names
 	FROM orders o
 	LEFT JOIN users u ON u.id = o.mitra_id
 	LEFT JOIN users d ON d.id = o.driver_id
@@ -755,7 +757,8 @@ func (h *AdminHandler) GetOrders(c *gin.Context) {
 	       BOOL_OR(o.driver_id IS NOT NULL) as is_dispatched,
 	       COALESCE(MAX(d.name), '') as driver_name,
 	       COALESCE(MAX(d.phone), '') as driver_phone,
-	       COALESCE(STRING_AGG(o.delivery_address, ', '), '') as addresses
+	       COALESCE(STRING_AGG(o.delivery_address, ' | '), '') as addresses,
+	       COALESCE(STRING_AGG(o.pharmacy_name, ' | '), '') as pharmacy_names
 	FROM orders o
 	LEFT JOIN users u ON u.id = o.mitra_id
 	LEFT JOIN users d ON d.id = o.driver_id
@@ -786,7 +789,7 @@ func (h *AdminHandler) GetOrders(c *gin.Context) {
 	for pgRows.Next() {
 		var s OrderSummary
 		if err := pgRows.Scan(&s.DispatchID, &s.MitraID, &s.MitraName, &s.CreatedAt,
-			&s.StopCount, &s.TotalFee, &s.Status, &s.IsDispatched, &s.DriverName, &s.DriverPhone, &s.Addresses); err != nil {
+			&s.StopCount, &s.TotalFee, &s.Status, &s.IsDispatched, &s.DriverName, &s.DriverPhone, &s.Addresses, &s.PharmacyNames); err != nil {
 			continue
 		}
 		summaries = append(summaries, s)
