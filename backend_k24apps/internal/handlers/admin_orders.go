@@ -172,16 +172,16 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 		var destLat, destLng float64
 		var zonaVal int
 		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
-		if rec != nil {
+		if rec != nil && rec.Latitude != 0 && rec.Longitude != 0 {
 			destLat = rec.Latitude
 			destLng = rec.Longitude
 			zonaVal = rec.Zona
 		} else {
 			var geocodeErr error
 			destLat, destLng, geocodeErr = geocodeAddress(item.AlamatLengkap, originLat, originLong)
-			if geocodeErr != nil {
-				destLat = originLat + 0.05
-				destLng = originLong + 0.05
+			if geocodeErr != nil || destLat == 0 || destLng == 0 {
+				destLat = originLat + (float64(len(resolved)+1) * 0.01)
+				destLng = originLong + (float64(len(resolved)+1) * 0.01)
 			}
 		}
 		resolved = append(resolved, resolvedBulkItem{
@@ -360,7 +360,7 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 		var finalLat, finalLng float64
 		var zonaVal int
 		rec, _ := findRecipient(h.DB, item.NamaApotek, item.AlamatLengkap)
-		if rec != nil {
+		if rec != nil && rec.Latitude != 0 && rec.Longitude != 0 {
 			finalLat = rec.Latitude
 			finalLng = rec.Longitude
 			zonaVal = rec.Zona
@@ -369,6 +369,10 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 			finalLng = item.Longitude
 			if finalLat == 0 && finalLng == 0 {
 				finalLat, finalLng, _ = geocodeAddress(item.AlamatLengkap, originLat, originLong)
+			}
+			if finalLat == 0 || finalLng == 0 {
+				finalLat = originLat + (float64(len(resolved)+1) * 0.01)
+				finalLng = originLong + (float64(len(resolved)+1) * 0.01)
 			}
 			insertRecipient := `INSERT INTO alamat_penerima (nama_apotek, alamat_lengkap, latitude, longitude) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING;`
 			_, _ = h.DB.Exec(ctx, insertRecipient, item.NamaApotek, item.AlamatLengkap, finalLat, finalLng)
