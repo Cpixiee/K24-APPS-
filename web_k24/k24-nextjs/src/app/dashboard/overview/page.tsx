@@ -741,8 +741,9 @@ export default function OverviewPage() {
                   </tr>
                 ) : (
                   invoices.slice(0, 10).map((row, idx) => {
-                    const isAman = row.status === 'DONE'
-                    const isMissing = row.status === 'MISSING'
+                    const isDone = row.status === 'DONE' && (row.catatan === 'Done' || row.catatan === 'Completed')
+                    const isVerified = row.status === 'DONE' || row.catatan === 'Done'
+                    const isMissing = row.status === 'MISSING' || (row.catatan && row.catatan !== 'Done' && row.catatan !== 'Belum diperiksa')
 
                     return (
                       <tr key={`${row.invoice_no}-${idx}`} className="hover:bg-muted/30 transition-colors">
@@ -779,10 +780,15 @@ export default function OverviewPage() {
 
                         {/* JAM SELESAI */}
                         <td className="py-3.5 px-4 text-muted-foreground">
-                          {isAman ? (
+                          {isDone ? (
                             <div>
                               <div className="font-semibold text-emerald-600 dark:text-emerald-400">Selesai</div>
-                              <span className="text-[10px]">Verifikasi Apoteker</span>
+                              <span className="text-[10px]">Kembali ke K-24</span>
+                            </div>
+                          ) : isVerified ? (
+                            <div>
+                              <div className="font-semibold text-teal-600 dark:text-teal-400">Diverifikasi Apoteker</div>
+                              <span className="text-[10px]">Proses Pengembalian Kurir</span>
                             </div>
                           ) : isMissing ? (
                             <div>
@@ -796,20 +802,25 @@ export default function OverviewPage() {
 
                         {/* STATUS */}
                         <td className="py-3.5 px-4">
-                          {isAman ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 text-[10px] font-bold">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Aman
+                          {isDone ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-[10px] font-bold">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                              Done (Selesai)
+                            </span>
+                          ) : isVerified ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-200 dark:border-teal-900/50 text-[10px] font-bold">
+                              <CheckCircle2 className="h-3 w-3 text-teal-600" />
+                              Diverifikasi Apoteker
                             </span>
                           ) : isMissing ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-900/50 text-[10px] font-bold">
-                              <ShieldAlert className="h-3 w-3" />
+                              <ShieldAlert className="h-3 w-3 text-red-600" />
                               Bermasalah
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 text-[10px] font-bold">
-                              <Clock className="h-3 w-3" />
-                              Pending
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50 text-[10px] font-bold">
+                              <Clock className="h-3 w-3 text-amber-600" />
+                              Belum Diperiksa
                             </span>
                           )}
                         </td>
@@ -817,7 +828,11 @@ export default function OverviewPage() {
                         {/* CATATAN INVOICE */}
                         <td className="py-3.5 px-4 text-right">
                           <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-md ${
-                            row.catatan === 'Done' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-amber-600 dark:text-amber-400 font-semibold'
+                            isDone || isVerified
+                              ? 'text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/30'
+                              : isMissing
+                              ? 'text-red-600 dark:text-red-400 font-bold bg-red-50 dark:bg-red-950/30'
+                              : 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/30'
                           }`}>
                             {row.catatan || 'Belum diperiksa'}
                           </span>
