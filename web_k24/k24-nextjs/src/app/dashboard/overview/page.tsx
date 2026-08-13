@@ -197,7 +197,7 @@ export default function OverviewPage() {
     statusLabel: string
   }
 
-  // 100% Dynamic Driver Progress Breakdown List with Pharmacy Names & Real-Time Status
+  // 100% Dynamic Driver Progress Breakdown List with Pharmacy Names Deduplicated per Stop
   const driverProgressList = useMemo(() => {
     const map: Record<string, {
       driver_name: string
@@ -218,29 +218,51 @@ export default function OverviewPage() {
       // Find matching invoice rows for this dispatch order
       const driverInvoices = invoices.filter(i => i.dispatch_id === o.dispatch_id || i.driver_name === o.driver_name)
       
-      let pharmacyItems: PharmacyStopItem[] = []
+      // Map and deduplicate by nama_apotek
+      const pharmacyMap: Record<string, PharmacyStopItem> = {}
+
       if (driverInvoices.length > 0) {
-        pharmacyItems = driverInvoices.map(inv => {
+        driverInvoices.forEach(inv => {
+          const apotekName = inv.nama_apotek
+          if (!apotekName) return
+
           const isDone = inv.status === 'DONE' || inv.catatan === 'Done' || inv.catatan === 'Completed'
           const isMissing = inv.status === 'MISSING' || (inv.catatan && inv.catatan !== 'Done' && inv.catatan !== 'Belum diperiksa' && inv.catatan !== 'Completed')
-          return {
-            name: inv.nama_apotek,
-            status: isDone ? 'DONE' : isMissing ? 'MISSING' : 'DELIVERING',
-            statusLabel: isDone ? 'Diverifikasi Apoteker' : isMissing ? 'Bermasalah / Retur' : 'Sedang Diantar'
+          
+          const itemStatus = isDone ? 'DONE' : isMissing ? 'MISSING' : 'DELIVERING'
+          const itemLabel = isDone ? 'Diverifikasi Apoteker' : isMissing ? 'Bermasalah / Retur' : 'Sedang Diantar'
+
+          if (!pharmacyMap[apotekName]) {
+            pharmacyMap[apotekName] = {
+              name: apotekName,
+              status: itemStatus,
+              statusLabel: itemLabel
+            }
+          } else {
+            if (itemStatus === 'MISSING') {
+              pharmacyMap[apotekName] = { name: apotekName, status: 'MISSING', statusLabel: itemLabel }
+            } else if (pharmacyMap[apotekName].status !== 'MISSING' && itemStatus === 'DONE') {
+              pharmacyMap[apotekName] = { name: apotekName, status: 'DONE', statusLabel: itemLabel }
+            }
           }
         })
-      } else {
-        // Fallback to pharmacy_names if invoices array not loaded yet
-        const rawNames = o.pharmacy_names ? o.pharmacy_names.split(' | ') : []
-        pharmacyItems = rawNames.filter(Boolean).map(name => ({
-          name: name,
-          status: 'DELIVERING',
-          statusLabel: 'Sedang Diantar'
-        }))
       }
 
+      // Fallback to pharmacy_names if pharmacyMap is empty
+      if (Object.keys(pharmacyMap).length === 0 && o.pharmacy_names) {
+        const rawNames = o.pharmacy_names.split(' | ').filter(Boolean)
+        rawNames.forEach(name => {
+          pharmacyMap[name] = {
+            name: name,
+            status: o.status === 'COMPLETED' ? 'DONE' : 'DELIVERING',
+            statusLabel: o.status === 'COMPLETED' ? 'Diverifikasi Apoteker' : 'Sedang Diantar'
+          }
+        })
+      }
+
+      const pharmacyItems = Object.values(pharmacyMap)
       const compS = pharmacyItems.filter(p => p.status === 'DONE').length
-      const totalS = Math.max(o.stop_count || 1, pharmacyItems.length)
+      const totalS = pharmacyItems.length || o.stop_count || 1
       const delivS = Math.max(0, totalS - compS)
 
       if (!map[key]) {
@@ -255,12 +277,14 @@ export default function OverviewPage() {
           pharmacies: pharmacyItems
         }
       } else {
-        map[key].total_stops += totalS
-        map[key].completed_stops += compS
-        map[key].delivering_stops += delivS
-        if (pharmacyItems.length > 0) {
-          map[key].pharmacies.push(...pharmacyItems)
-        }
+        pharmacyItems.forEach(p => {
+          if (!map[key].pharmacies.some(existP => existP.name === p.name)) {
+            map[key].pharmacies.push(p)
+          }
+        })
+        map[key].total_stops = map[key].pharmacies.length
+        map[key].completed_stops = map[key].pharmacies.filter(p => p.status === 'DONE').length
+        map[key].delivering_stops = Math.max(0, map[key].total_stops - map[key].completed_stops)
       }
     })
 
