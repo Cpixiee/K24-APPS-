@@ -76,15 +76,6 @@ export default function OverviewPage() {
   const [periodFilter, setPeriodFilter] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all')
   const [armadaFilter, setArmadaFilter] = useState<'all' | 'motor' | 'mobil'>('all')
   const [isTvMode, setIsTvMode] = useState(false)
-  const [currentSlide, setCurrentSlide] = useState(0)
-
-  // Auto-play banner slide every 5 seconds
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % 3)
-    }, 5000)
-    return () => clearInterval(timer)
-  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -435,95 +426,6 @@ export default function OverviewPage() {
             <Tv className="h-4 w-4" />
             <span className="hidden sm:inline">{isTvMode ? 'TV Mode On' : 'TV Mode'}</span>
           </button>
-        </div>
-      </div>
-
-      {/* ─── SLIDE BANNER CAROUSEL (3 SLIDES) ─── */}
-      <div className="relative w-full mb-6 rounded-2xl overflow-hidden shadow-sm border border-border group bg-black">
-        {/* Slide 1: Uploaded K-24 Official Image */}
-        {currentSlide === 0 && (
-          <div className="relative w-full h-[180px] sm:h-[220px] md:h-[240px] overflow-hidden">
-            <img src="/banner_k24_1.png" alt="Apotek K-24 24 Tahun Bertumbuh" className="w-full h-full object-cover" />
-          </div>
-        )}
-
-        {/* Slide 2: K-24 Logistics & Supply Chain Banner */}
-        {currentSlide === 1 && (
-          <div className="relative w-full h-[180px] sm:h-[220px] md:h-[240px] bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-900 text-white p-6 sm:p-8 flex flex-col justify-between overflow-hidden">
-            <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative z-10 max-w-2xl">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-400 text-emerald-950 font-black text-[11px] uppercase tracking-wider shadow-sm mb-3">
-                <Zap className="h-3.5 w-3.5" /> Pasokan Obat 24 Jam Nonstop
-              </span>
-              <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight">
-                Jaminan Distribusi Obat & Layanan Logistik Ekspres Outlet Apotek K-24
-              </h2>
-              <p className="text-xs sm:text-sm text-emerald-100/90 mt-2 font-medium line-clamp-2">
-                Dukungan penuh pengiriman produk kesehatan dengan armada terverifikasi & pemantauan live rute GPS.
-              </p>
-            </div>
-            <div className="relative z-10 flex items-center gap-3">
-              <span className="px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
-                <Truck className="h-3.5 w-3.5 text-yellow-300" /> Armada Motor & Mobil
-              </span>
-              <span className="px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" /> Real-Time Live Radar GPS
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Slide 3: Digitalisation & Verification Banner */}
-        {currentSlide === 2 && (
-          <div className="relative w-full h-[180px] sm:h-[220px] md:h-[240px] bg-gradient-to-r from-red-700 via-emerald-800 to-emerald-900 text-white p-6 sm:p-8 flex flex-col justify-between overflow-hidden">
-            <div className="absolute -left-10 -top-10 w-72 h-72 bg-red-500/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative z-10 max-w-2xl">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-400 text-emerald-950 font-black text-[11px] uppercase tracking-wider shadow-sm mb-3">
-                <ShieldAlert className="h-3.5 w-3.5" /> Transparansi Operasional Farmasi
-              </span>
-              <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight">
-                Sistem Verifikasi Faktur & Laporan Retur Invoice Bermasalah Terintegrasi
-              </h2>
-              <p className="text-xs sm:text-sm text-emerald-100/90 mt-2 font-medium line-clamp-2">
-                Pemeriksaan bukti unboxing apoteker & cetak PDF catatan harian invoice untuk akurasi data 100%.
-              </p>
-            </div>
-            <div className="relative z-10 flex items-center gap-3">
-              <span className="px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-emerald-300" /> Verifikasi Digital 1 Klik
-              </span>
-              <span className="px-3 py-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
-                <Printer className="h-3.5 w-3.5 text-yellow-300" /> Cetak PDF Rekap Harian
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Carousel Navigation Arrows */}
-        <button
-          onClick={() => setCurrentSlide((prev) => (prev === 0 ? 2 : prev - 1))}
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <button
-          onClick={() => setCurrentSlide((prev) => (prev + 1) % 3)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </button>
-
-        {/* Carousel Indicator Dots */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
-          {[0, 1, 2].map((idx) => (
-            <button
-              key={idx}
-              onClick={() => setCurrentSlide(idx)}
-              className={`h-2 rounded-full transition-all cursor-pointer ${
-                currentSlide === idx ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white/80'
-              }`}
-            />
-          ))}
         </div>
       </div>
 
