@@ -38,13 +38,16 @@ interface LiveTrackingMapProps {
   stops: TrackingStop[]
 }
 
-// Fetch actual street road geometry via OpenStreetMap OSRM Routing Engine
+// Fetch actual street road geometry via OpenStreetMap OSRM Routing Engine with timeout
 async function fetchOSRMRoute(waypoints: [number, number][]): Promise<[number, number][]> {
   if (waypoints.length < 2) return waypoints
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 3500)
   try {
     const coordsStr = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(';')
     const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
     const data = await res.json()
     if (data.routes && data.routes.length > 0 && data.routes[0].geometry) {
       const geoCoords: [number, number][] = data.routes[0].geometry.coordinates
@@ -52,7 +55,8 @@ async function fetchOSRMRoute(waypoints: [number, number][]): Promise<[number, n
       return geoCoords.map(([lng, lat]) => [lat, lng])
     }
   } catch (err) {
-    console.warn('[OSRM Route Fetch Warning, using fallback straight path]:', err)
+    clearTimeout(timeoutId)
+    console.warn('[OSRM Route Fetch Timeout/Error, using fallback straight path]:', err)
   }
   return waypoints
 }
@@ -189,9 +193,13 @@ export default function LiveTrackingMap({
       // 3. Fetch OSRM Road Geometry & Draw Solid Road Polyline
       if (waypoints.length > 1) {
         setIsRoutingLoading(true)
-        const roadPolylineCoords = await fetchOSRMRoute(waypoints)
+        let roadPolylineCoords: [number, number][] = waypoints
+        try {
+          roadPolylineCoords = await fetchOSRMRoute(waypoints)
+        } finally {
+          if (isMounted) setIsRoutingLoading(false)
+        }
         if (!isMounted) return
-        setIsRoutingLoading(false)
 
         // Outer glow path
         const outerGlow = L.polyline(roadPolylineCoords, {
