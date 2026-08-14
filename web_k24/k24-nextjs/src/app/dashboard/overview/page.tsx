@@ -301,16 +301,12 @@ export default function OverviewPage() {
     isLive?: boolean
   }
 
-  // Distinct KPI cards: Admin & Mitra get dynamic fraction format (e.g. 7/7 Alamat, 0/7 Alamat) for order delivery progress
-  const kpiCards: KPICard[] = isMitra ? [
-    { title: 'Total Order', value: totalOrders.toString(), icon: ShoppingBag, subtitle: 'Total batch order', growth: 15.3, positive: true },
+  // Distinct KPI cards: 5 Cards matching exact user specifications
+  const kpiCards: KPICard[] = [
+    { title: 'Jumlah Order', value: totalOrders.toString(), icon: ShoppingBag, subtitle: 'Total batch order', growth: 15.3, positive: true },
+    { title: 'Jumlah Apotek', value: totalStops.toString(), icon: Store, subtitle: 'Alamat yang dikirim', growth: 18.2, positive: true },
     { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Sedang Dikirim', value: `${activeStops}/${totalStops}`, icon: Truck, subtitle: 'Titik alamat dalam pengantaran', growth: 8.5, positive: true },
-    { title: 'Selesai Diantar', value: `${completedStops}/${totalStops}`, icon: CheckCircle2, subtitle: 'Titik alamat telah diterima', growth: 95.0, positive: true },
-  ] : [
-    { title: 'Total Driver', value: totalDrivers.toString(), icon: Truck, subtitle: 'Aktif saat ini', growth: 8.2, positive: true },
-    { title: 'Total Invoice', value: totalInvoices.toString(), icon: FileText, subtitle: 'Total lembar invoice', growth: 12.4, positive: true },
-    { title: 'Sedang Dikirim', value: `${activeStops}/${totalStops}`, icon: Truck, subtitle: 'Titik alamat dalam pengantaran', growth: 8.5, positive: true },
+    { title: 'Sedang Dikirim', value: activeStops.toString(), icon: Truck, subtitle: 'Titik alamat dalam pengantaran', growth: 8.5, positive: true },
     { title: 'Selesai Diantar', value: `${completedStops}/${totalStops}`, icon: CheckCircle2, subtitle: 'Titik alamat telah diterima', growth: 95.0, positive: true },
   ]
 
@@ -548,8 +544,8 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* ─── Top KPI Stats Row (4 Cards) ─── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      {/* ─── Top KPI Stats Row (5 Cards) ─── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 mb-6">
         {kpiCards.map((card) => {
           const Icon = card.icon
           return (
