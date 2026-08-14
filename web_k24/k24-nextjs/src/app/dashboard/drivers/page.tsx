@@ -1024,26 +1024,6 @@ function DriversPageContent() {
                                 <button
                                   onClick={() => {
                                     setActiveMenuId(null)
-                                    openEditModal(d)
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-accent transition-colors text-left"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                                  <span>Edit Data Registrasi</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setActiveMenuId(null)
-                                    openResetPasswordModal(d)
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors text-left"
-                                >
-                                  <KeyRound className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                                  <span>Reset Password</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setActiveMenuId(null)
                                     triggerApprove(d.id, d.name)
                                   }}
                                   className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-left"
