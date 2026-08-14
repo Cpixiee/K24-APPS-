@@ -1316,16 +1316,17 @@ func findRecipient(db *pgxpool.Pool, namaApotek, alamatLengkap string) (*models.
 }
 
 func cleanAddressForOSM(addr string) string {
-	words := strings.Fields(addr)
-	newWords := []string{}
-	for _, w := range words {
-		wLower := strings.ToLower(w)
-		if strings.HasPrefix(wLower, "no.") || strings.Contains(wLower, "rt.") || strings.Contains(wLower, "rw.") {
-			continue
-		}
-		newWords = append(newWords, w)
-	}
-	return strings.TrimSpace(strings.Join(newWords, " "))
+	// Strip parens like (PT. MORRIS MEDIKAFARMA INDONESIA)
+	reParens := regexp.MustCompile(`\([^)]*\)`)
+	addr = reParens.ReplaceAllString(addr, "")
+
+	// Strip noisy building / unit tokens
+	reNoisy := regexp.MustCompile(`(?i)\b(perkantoran|gedung|ruko|pt\.|cv\.|blok\s+\w+|no\.\s*\w+|no\s*\d+|rt\.\s*\d+|rw\.\s*\d+|rt\s*\d+|rw\s*\d+)\b`)
+	cleaned := reNoisy.ReplaceAllString(addr, "")
+
+	// Clean up extra spaces/commas
+	words := strings.Fields(cleaned)
+	return strings.TrimSpace(strings.Join(words, " "))
 }
 
 func extractStreetAndCityVariations(alamat string) []string {
@@ -1357,7 +1358,7 @@ func extractStreetAndCityVariations(alamat string) []string {
 		}
 
 		if cityPart == "" && i > 0 {
-			for _, city := range []string{"jakarta", "yogyakarta", "jogja", "sleman", "bantul", "tangerang", "bekasi", "depok", "bogor"} {
+			for _, city := range []string{"jakarta", "yogyakarta", "jogja", "sleman", "bantul", "tangerang", "bekasi", "depok", "bogor", "surabaya", "sidoarjo"} {
 				if strings.Contains(pLower, city) {
 					cityPart = strings.Title(city)
 					if cityPart == "Jogja" {
@@ -1373,6 +1374,12 @@ func extractStreetAndCityVariations(alamat string) []string {
 		results = append(results, "Jalan "+rawStreet+", "+cityPart)
 		results = append(results, rawStreet+", "+cityPart)
 	}
+
+	// Cleaned address fallback
+	if cleaned := cleanAddressForOSM(alamat); cleaned != "" {
+		results = append(results, cleaned)
+	}
+
 	return results
 }
 
@@ -1426,26 +1433,50 @@ func geocodeAddress(alamat string, fallbackLat, fallbackLong float64) (float64, 
 		}
 	}
 
-	// OSM Nominatim fallback
+	// OSM Nominatim & Photon fallback queries
 	var queries []string
 	queries = append(queries, extractStreetAndCityVariations(alamat)...)
+	queries = append(queries, cleanAddressForOSM(alamat))
 	queries = append(queries, alamat)
-	parts := strings.Split(alamat, ",")
-	if len(parts) > 1 {
-		trimmed := []string{}
-		for _, p := range parts[1:] {
-			trimmed = append(trimmed, strings.TrimSpace(p))
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+
+	// Try Photon API (OSM Komoot geocoder)
+	for _, queryVal := range queries {
+		if strings.TrimSpace(queryVal) == "" {
+			continue
 		}
-		queries = append(queries, strings.Join(trimmed, ", "))
-	}
-	for _, q := range append([]string{}, queries...) {
-		if cleaned := cleanAddressForOSM(q); cleaned != q && cleaned != "" {
-			queries = append(queries, cleaned)
+		u := fmt.Sprintf("https://photon.komoot.io/api/?q=%s&limit=1", url.QueryEscape(queryVal))
+		req, err := http.NewRequest("GET", u, nil)
+		if err == nil {
+			req.Header.Set("User-Agent", "K24Apps/1.0 (contact: admin@k24.com)")
+			resp, err := httpClient.Do(req)
+			if err == nil {
+				var data struct {
+					Features []struct {
+						Geometry struct {
+							Coordinates []float64 `json:"coordinates"` // [lng, lat]
+						} `json:"geometry"`
+					} `json:"features"`
+				}
+				errDecode := json.NewDecoder(resp.Body).Decode(&data)
+				resp.Body.Close()
+				if errDecode == nil && len(data.Features) > 0 && len(data.Features[0].Geometry.Coordinates) >= 2 {
+					lngVal := data.Features[0].Geometry.Coordinates[0]
+					latVal := data.Features[0].Geometry.Coordinates[1]
+					if latVal != 0 && lngVal != 0 {
+						return latVal, lngVal, nil
+					}
+				}
+			}
 		}
 	}
 
-	httpClient := &http.Client{Timeout: 5 * time.Second}
+	// OSM Nominatim fallback
 	for _, queryVal := range queries {
+		if strings.TrimSpace(queryVal) == "" {
+			continue
+		}
 		u := fmt.Sprintf("https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=1", url.QueryEscape(queryVal))
 		req, err := http.NewRequest("GET", u, nil)
 		if err != nil {
