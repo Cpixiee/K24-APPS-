@@ -458,16 +458,12 @@ export default function OrdersPage() {
               )}
 
               {/* 3. Bukti Faktur Fisik Uploaded by Driver */}
-              {s.facture_photo_url ? (
+              {s.facture_photo_url && s.facture_photo_url !== s.extra_items_photo_url ? (
                 <div className="pt-2 border-t border-dashed border-border/80">
                   <span className="text-xs font-bold text-foreground block mb-2">📄 Bukti Faktur Fisik Tanda Tangan & Cap (Driver):</span>
                   <PhotoGalleryViewer photoField={s.facture_photo_url} title="Foto Faktur Tanda Tangan & Cap" />
                 </div>
-              ) : (
-                <div className="pt-2 border-t border-dashed border-border/80 text-[11px] text-muted-foreground italic">
-                  📄 Bukti Faktur Fisik (Driver): Menunggu driver mengunggah foto faktur fisik.
-                </div>
-              )}
+              ) : null}
             </div>
 
             {s.status !== 'COMPLETED' && s.status === 'COMPLETED_WAITING_APPROVAL' && (

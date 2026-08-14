@@ -1835,7 +1835,7 @@ func (h *AdminHandler) UnboxOrder(c *gin.Context) {
 	now := time.Now()
 	_, err := h.DB.Exec(ctx,
 		`UPDATE orders 
-		 SET status = 'READY_FOR_PICKUP_FACTURE', unboxing_option = 'UNBOXING', 
+		 SET status = 'COMPLETED', unboxing_option = 'UNBOXING', 
 		     checked_invoices = COALESCE(NULLIF($1, ''), checked_invoices), 
 		     extra_items_note = COALESCE(NULLIF($2, ''), extra_items_note), 
 		     extra_items_photo_url = COALESCE(NULLIF($3, ''), extra_items_photo_url), 
@@ -1868,7 +1868,7 @@ func (h *AdminHandler) UnboxOrder(c *gin.Context) {
 		NotifyAdmins(ctx, h.DB, "Verifikasi Apoteker Selesai", fmt.Sprintf("Faktur pesanan %s (%s) telah diverifikasi oleh Apoteker.", orderNum, pharmName))
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Unboxing selesai, status order diset menjadi READY_FOR_PICKUP_FACTURE"})
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Unboxing selesai, order diset menjadi COMPLETED"})
 }
 
 // WaitUnboxOrder handles pharmacist choosing to wait for unboxing later
@@ -1937,7 +1937,7 @@ func (h *AdminHandler) UpdateOrderFacture(c *gin.Context) {
 	now := time.Now()
 	_, err := h.DB.Exec(ctx,
 		`UPDATE orders 
-		 SET status = 'READY_FOR_PICKUP_FACTURE', facture_photo_url = $1, completed_at = $2 
+		 SET status = 'COMPLETED', facture_photo_url = $1, completed_at = $2 
 		 WHERE id = $3`,
 		req.FacturePhoto, now, orderID,
 	)
