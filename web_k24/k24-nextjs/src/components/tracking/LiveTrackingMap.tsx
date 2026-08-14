@@ -221,36 +221,35 @@ export default function LiveTrackingMap({
         })
         layerGroup.addLayer(roadPath)
 
-        // 4. Position Live Driver Marker ONLY when driver has active GPS or is actively delivering
+        // 4. Position Live Driver Marker
         const isDeliveringOrCompleted = stops.some((s) => s.status === 'DELIVERING' || s.status === 'PICKING_UP' || s.status === 'COMPLETED')
         const isWaitingPickup = !isDeliveringOrCompleted
 
         let driverLat = driver.current_lat
         let driverLng = driver.current_lng
+        let isGPSActive = true
 
-        // When waiting for pickup: only display driver marker if driver has actual real-time GPS coordinates
-        // Do NOT force driver marker onto pharmacy or delivery route
-        if (isWaitingPickup) {
-          if (!driverLat || !driverLng || driverLat === 0) {
-            // Driver hasn't picked up yet and has no active GPS coordinate: do not render marker on map
-            driverLat = 0
-            driverLng = 0
+        // If driver hasn't sent mobile GPS coordinates yet (current_lat === 0), place driver at Pharmacy Pickup location
+        if (!driverLat || !driverLng || driverLat === 0) {
+          isGPSActive = false
+          if (pharmacyLat && pharmacyLng && pharmacyLat !== 0) {
+            driverLat = pharmacyLat
+            driverLng = pharmacyLng
           }
-        } else if ((!driverLat || !driverLng || driverLat === 0) && roadPolylineCoords.length > 0) {
-          // Fallback during active delivery if GPS coordinate is zero
-          const midIdx = Math.floor(roadPolylineCoords.length / 3)
-          driverLat = roadPolylineCoords[midIdx][0]
-          driverLng = roadPolylineCoords[midIdx][1]
         }
 
         if (driverLat && driverLng && driverLat !== 0) {
           const vehicleEmoji = driver.vehicle_type === 'mobil' ? '🚗' : '🏍️'
-          const bgGradient = isWaitingPickup
+          const bgGradient = !isGPSActive
+            ? 'linear-gradient(135deg, #64748b, #475569)'
+            : isWaitingPickup
             ? 'linear-gradient(135deg, #d97706, #b45309)'
             : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
-          const ringColor = isWaitingPickup ? 'rgba(217, 119, 6, 0.25)' : 'rgba(37, 99, 235, 0.25)'
-          const dotColor = isWaitingPickup ? 'rgba(245, 158, 11, 0.4)' : 'rgba(59, 130, 246, 0.4)'
-          const statusText = isWaitingPickup
+          const ringColor = !isGPSActive ? 'rgba(100, 116, 139, 0.25)' : isWaitingPickup ? 'rgba(217, 119, 6, 0.25)' : 'rgba(37, 99, 235, 0.25)'
+          const dotColor = !isGPSActive ? 'rgba(148, 163, 184, 0.4)' : isWaitingPickup ? 'rgba(245, 158, 11, 0.4)' : 'rgba(59, 130, 246, 0.4)'
+          const statusText = !isGPSActive
+            ? '🟡 Menunggu Sinyal GPS dari HP Driver'
+            : isWaitingPickup
             ? '🟡 Driver Belum Pickup (Menuju Apotek)'
             : '🟢 Sedang Mengantar Paket (Live)'
 
