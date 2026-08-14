@@ -63,8 +63,8 @@ func (rl *ipRateLimiter) cleanupLoop() {
 	}
 }
 
-// loginLimiter: 5 attempts per minute per IP
-var loginLimiter = newIPRateLimiter(5, time.Minute)
+// loginLimiter: 60 attempts per minute per IP (prevents throttling on shared cellular CGNAT / WiFi)
+var loginLimiter = newIPRateLimiter(60, time.Minute)
 
 // LoginRateLimitMiddleware limits login attempts to 5 per minute per IP.
 // Returns HTTP 429 Too Many Requests when limit is exceeded.

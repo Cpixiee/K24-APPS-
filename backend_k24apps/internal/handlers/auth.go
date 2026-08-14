@@ -186,23 +186,33 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var user models.User
 	var passwordHash string
 
-	// Search by email OR username (supports 'goodwheel' admin login)
+	var plateNumber string
+	var isActive bool
+	var rating float64
+	var vehicleType string
+	var isApproved bool
+
+	var isSuspended bool
+	var suspendedUntil *time.Time
+	var suspendReason string
+	var ktpUrl, simUrl, stnkUrl string
+
+	// Search by email OR username with single fast LEFT JOIN to fetch profile in 1 DB roundtrip
 	selectQuery := `
-	SELECT id, username, email, name, password_hash, phone, role, COALESCE(profile_picture, ''), created_at, updated_at
-	FROM users
-	WHERE email = $1 OR username = $1;`
+	SELECT u.id, u.username, u.email, u.name, u.password_hash, u.phone, u.role, COALESCE(u.profile_picture, ''), u.created_at, u.updated_at,
+	       COALESCE(dp.plate_number, 'Belum diatur'), COALESCE(dp.is_active, false), COALESCE(dp.rating, 5.00), 
+	       COALESCE(dp.vehicle_type, 'motor'), COALESCE(dp.is_approved, false), COALESCE(dp.is_suspended, false), 
+	       dp.suspended_until, COALESCE(dp.suspend_reason, ''),
+	       COALESCE(dp.ktp_url, ''), COALESCE(dp.sim_url, ''), COALESCE(dp.stnk_url, '')
+	FROM users u
+	LEFT JOIN driver_profiles dp ON u.id = dp.user_id
+	WHERE u.email = $1 OR u.username = $1;`
 
 	err := h.DB.QueryRow(ctx, selectQuery, req.Email).Scan(
-		&user.ID,
-		&user.Username,
-		&user.Email,
-		&user.Name,
-		&passwordHash,
-		&user.Phone,
-		&user.Role,
-		&user.ProfilePicture,
-		&user.CreatedAt,
-		&user.UpdatedAt,
+		&user.ID, &user.Username, &user.Email, &user.Name, &passwordHash, &user.Phone, &user.Role,
+		&user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt,
+		&plateNumber, &isActive, &rating, &vehicleType, &isApproved, &isSuspended,
+		&suspendedUntil, &suspendReason, &ktpUrl, &simUrl, &stnkUrl,
 	)
 
 	if err == pgx.ErrNoRows {
@@ -230,42 +240,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Verify Admin Approval for Drivers
-	var plateNumber string
-	var isActive bool
-	var rating float64
-	var vehicleType string
-	var isApproved bool
-	var ktpUrl, simUrl, stnkUrl string
-
-	var isSuspended bool
-	var suspendedUntil *time.Time
-	var suspendReason string
-
 	if user.Role == "DRIVER" {
-		err = h.DB.QueryRow(ctx,
-			`SELECT plate_number, is_active, rating, COALESCE(vehicle_type, 'motor'), COALESCE(is_approved, false), 
-			        COALESCE(is_suspended, false), suspended_until, COALESCE(suspend_reason, ''),
-			        COALESCE(ktp_url, ''), COALESCE(sim_url, ''), COALESCE(stnk_url, '') 
-			 FROM driver_profiles WHERE user_id = $1`,
-			user.ID,
-		).Scan(&plateNumber, &isActive, &rating, &vehicleType, &isApproved, &isSuspended, &suspendedUntil, &suspendReason, &ktpUrl, &simUrl, &stnkUrl)
-
-		if err == pgx.ErrNoRows {
-			// Auto create default profile if missing to prevent crashes
-			plateNumber = "Belum diatur"
-			isActive = false
-			rating = 5.00
-			vehicleType = "motor"
-			isApproved = false // Require admin approval by default
-			_, _ = h.DB.Exec(ctx, "INSERT INTO driver_profiles (user_id, plate_number, is_active, rating, vehicle_type, is_approved) VALUES ($1, $2, $3, $4, $5, false)", user.ID, plateNumber, isActive, rating, vehicleType)
-		} else if err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Status:  "error",
-				Message: "Gagal memproses profil driver",
-			})
-			return
-		}
-
 		// Auto-lift expired suspension
 		if isSuspended && suspendedUntil != nil && time.Now().After(*suspendedUntil) {
 			_, _ = h.DB.Exec(ctx, "UPDATE driver_profiles SET is_suspended = false, suspended_until = NULL, suspend_reason = '' WHERE user_id = $1", user.ID)
