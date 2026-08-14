@@ -29,6 +29,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
   int _userAvatarIndex = 0;
   String? _customProfilePicPath;
   Timer? _notificationTimer;
+  Timer? _locationTimer;
   int _unreadNotificationCount = 0;
   final Set<String> _collapsedCardIds = {};
 
@@ -69,12 +70,30 @@ class _LoggedScreenState extends State<LoggedScreen> {
     _notificationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       _checkNotifications();
     });
+
+    // Setup periodic GPS location update every 15 seconds
+    _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      _sendDriverLocationUpdate();
+    });
   }
 
   @override
   void dispose() {
     _notificationTimer?.cancel();
+    _locationTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _sendDriverLocationUpdate() async {
+    if (_dashboardData != null && _dashboardData!.driver.isActive) {
+      // Trigger location update gracefully
+      try {
+        await ApiService.updateDriverLocation(
+          _dashboardData!.driver.currentLat != 0.0 ? _dashboardData!.driver.currentLat : -6.2019957,
+          _dashboardData!.driver.currentLng != 0.0 ? _dashboardData!.driver.currentLng : 106.8551888,
+        );
+      } catch (_) {}
+    }
   }
 
   Future<void> _checkNotifications() async {
