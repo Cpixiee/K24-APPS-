@@ -10,6 +10,7 @@ import (
 	"backend_k24apps/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // GetDrivers fetches the list of all drivers, including their profile details.
@@ -355,4 +356,40 @@ func (h *AdminHandler) DeleteDriver(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Akun driver berhasil dihapus secara permanen"})
+}
+
+// ResetDriverPassword allows admin/superadmin to update/reset a driver's password
+func (h *AdminHandler) ResetDriverPassword(c *gin.Context) {
+	driverID := c.Param("id")
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required,min=6"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Password baru minimal harus 6 karakter."})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memproses enkripsi password: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	res, err := h.DB.Exec(ctx,
+		"UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND role = 'DRIVER'",
+		string(hashedPassword), driverID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui password driver: " + err.Error()})
+		return
+	}
+
+	if res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Status: "error", Message: "User driver tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Password driver berhasil diperbarui!"})
 }

@@ -165,6 +165,8 @@ func main() {
 			admin.POST("/drivers/:id/update", adminHandler.UpdateDriver)
 			admin.POST("/drivers/:id/suspend", adminHandler.SuspendDriver)
 			admin.POST("/drivers/:id/unsuspend", adminHandler.UnsuspendDriver)
+			admin.POST("/drivers/:id/reset-password", adminHandler.ResetDriverPassword)
+			admin.PUT("/drivers/:id/reset-password", adminHandler.ResetDriverPassword)
 			admin.DELETE("/drivers/:id", adminHandler.DeleteDriver)
 			admin.GET("/mitra", adminHandler.GetMitra)
 			admin.POST("/mitra", adminHandler.CreateMitra)

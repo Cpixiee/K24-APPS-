@@ -60,6 +60,7 @@ export const adminAPI = {
   getFlatInvoices: (date?: string) => apiClient.get(`/admin/orders/invoices-flat${date ? `?date=${date}` : ''}`),
   getOrderDetail: (dispatchId: string | number) => apiClient.get(`/admin/orders/${dispatchId}`),
   deleteOrder: (id: string | number) => apiClient.delete(`/admin/orders/${id}`),
+  clearAllOrders: () => apiClient.delete('/admin/orders/clear-all'),
   approveDriver: (id: number) => apiClient.post(`/admin/drivers/${id}/approve`),
   rejectDriver: (id: number) => apiClient.post(`/admin/drivers/${id}/reject`),
   updateDriver: (id: number, data: { name: string; phone?: string; email?: string; vehicle_type?: string; plate_number?: string }) =>
@@ -68,6 +69,8 @@ export const adminAPI = {
     apiClient.post(`/admin/drivers/${id}/suspend`, { duration_days: durationDays, reason }),
   unsuspendDriver: (id: number) =>
     apiClient.post(`/admin/drivers/${id}/unsuspend`),
+  resetDriverPassword: (id: number, newPassword: string) =>
+    apiClient.post(`/admin/drivers/${id}/reset-password`, { new_password: newPassword }),
   deleteDriver: (id: number) =>
     apiClient.delete(`/admin/drivers/${id}`),
   approveRejectOrder: (id: number, approve: boolean) => apiClient.post(`/admin/orders/${id}/approve-reject`, { approve }),
