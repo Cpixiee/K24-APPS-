@@ -42,6 +42,11 @@ func (h *AdminHandler) GetRecipients(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Master alamat penerima berhasil diambil", Data: recipients})
 }
 
+func isSurabayaRegion(originAddress, recipientAddress, namaApotek string) bool {
+	combined := strings.ToLower(originAddress + " " + recipientAddress + " " + namaApotek)
+	return strings.Contains(combined, "surabaya") || strings.Contains(combined, "sidoarjo")
+}
+
 // CreateOrder creates a single new delivery order.
 func (h *AdminHandler) CreateOrder(c *gin.Context) {
 	var req models.CreateOrderRequest
@@ -67,18 +72,25 @@ func (h *AdminHandler) CreateOrder(c *gin.Context) {
 		orderNumber = fmt.Sprintf("ORD-%d", r.Intn(900000)+100000)
 	}
 
+	var driverFee float64
+	if isSurabayaRegion(req.PharmacyAddress, req.DeliveryAddress, req.CustomerName) {
+		driverFee = req.DeliveryFee
+	} else {
+		driverFee = math.Round(req.DeliveryFee * 0.80)
+	}
+
 	insertQuery := `
-	INSERT INTO orders (order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee)
-	VALUES ($1, 'PICKING_UP', $2, $3, $4, $5, $6, $7, $8)
-	RETURNING id, order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, created_at;`
+	INSERT INTO orders (order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, driver_fee)
+	VALUES ($1, 'PICKING_UP', $2, $3, $4, $5, $6, $7, $8, $9)
+	RETURNING id, order_number, status, pharmacy_name, pharmacy_address, delivery_address, customer_name, customer_phone, medicine_summary, delivery_fee, driver_fee, created_at;`
 
 	var order models.Order
 	err := h.DB.QueryRow(ctx, insertQuery,
 		orderNumber, req.PharmacyName, req.PharmacyAddress, req.DeliveryAddress,
-		req.CustomerName, req.CustomerPhone, req.MedicineSummary, req.DeliveryFee,
+		req.CustomerName, req.CustomerPhone, req.MedicineSummary, req.DeliveryFee, driverFee,
 	).Scan(&order.ID, &order.OrderNumber, &order.Status, &order.PharmacyName,
 		&order.PharmacyAddress, &order.DeliveryAddress, &order.CustomerName,
-		&order.CustomerPhone, &order.MedicineSummary, &order.DeliveryFee, &order.CreatedAt)
+		&order.CustomerPhone, &order.MedicineSummary, &order.DeliveryFee, &order.DriverFee, &order.CreatedAt)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan order: " + err.Error()})
@@ -162,6 +174,9 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 
 	fullRates := loadMitraFullRates(h.DB, ctx, userID)
 	originLat, originLong := fullRates.OriginLat, fullRates.OriginLong
+	var originName, originAddress string
+	_ = h.DB.QueryRow(ctx, "SELECT pickup_name, alamat_lengkap FROM mitra_profiles WHERE user_id = $1", userID).Scan(&originName, &originAddress)
+
 	activeRate := resolveRate(req.Armada, req.RateType,
 		&fullRates.MotorDimensi, &fullRates.MotorKm, &fullRates.MotorTitik, &fullRates.MotorBerat,
 		&fullRates.MobilDimensi, &fullRates.MobilKm, &fullRates.MobilTitik, &fullRates.MobilBerat, &fullRates.MobilLumpsum)
@@ -280,6 +295,12 @@ func (h *AdminHandler) CalculateOrderPrice(c *gin.Context) {
 				driverFee = rowPrice
 			}
 			rateLabel = fmt.Sprintf("Skema %s", req.RateType)
+		}
+
+		isSurabaya := isSurabayaRegion(originName+" "+originAddress, r.item.AlamatLengkap, r.item.NamaApotek)
+		if !isSurabaya {
+			// For regions outside Surabaya (Jabodetabek, etc.), driver earnings are cut 20% from admin rowPrice (driver receives 80%)
+			driverFee = math.Round(rowPrice * 0.80)
 		}
 
 		response.Items = append(response.Items, models.CalculatedItemResult{
@@ -450,6 +471,12 @@ func (h *AdminHandler) CreateBulkOrders(c *gin.Context) {
 			} else {
 				driverFee = rowPrice
 			}
+		}
+
+		isSurabaya := isSurabayaRegion(originName+" "+originAddress, r.item.AlamatLengkap, r.item.NamaApotek)
+		if !isSurabaya {
+			// For regions outside Surabaya (Jabodetabek, etc.), driver earnings are cut 20% from admin rowPrice (driver receives 80%)
+			driverFee = math.Round(rowPrice * 0.80)
 		}
 
 		rowPrice = math.Round(rowPrice)
