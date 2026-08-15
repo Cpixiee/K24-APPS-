@@ -53,59 +53,53 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
 
   void _initInvoices() {
     _invoices = [];
-    final textToParse = '${widget.order.checkedInvoices} ${widget.order.medicineSummary}';
 
-    if (textToParse.toUpperCase().contains('BARANG SUSULAN') || textToParse.toUpperCase().contains('BARANG_SUSULAN')) {
-      if (!_invoices.contains('BARANG SUSULAN')) {
-        _invoices.add('BARANG SUSULAN');
-      }
-    }
+    // Prioritize checkedInvoices if already saved, otherwise parse medicineSummary
+    final primaryText = widget.order.checkedInvoices.isNotEmpty
+        ? widget.order.checkedInvoices
+        : widget.order.medicineSummary;
 
-    // 1. First, try matching explicit invoice numbers with digits (e.g. 64297, 64299)
-    final regExp = RegExp(r'\b(?:INV-?\d+|\d{4,10})\b', caseSensitive: false);
-    final matches = regExp.allMatches(textToParse);
-
-    for (final m in matches) {
-      final raw = m.group(0)!;
-      final formatted = raw.toUpperCase().startsWith('INV-')
-          ? raw.toUpperCase()
-          : 'INV-$raw';
-      if (!_invoices.contains(formatted)) {
-        _invoices.add(formatted);
-      }
-    }
-
-    // 2. If no numeric invoices were found, parse tokens ignoring metadata like Armada/Rate/KM
-    if (_invoices.isEmpty) {
-      final rawParts = textToParse.split(RegExp(r'[;,]'));
-      for (final p in rawParts) {
-        final clean = p.split(':').first.trim();
-        final lower = clean.toLowerCase();
-        if (clean.isNotEmpty &&
-            !lower.contains('armada') &&
-            !lower.contains('rate') &&
-            !lower.contains('km') &&
-            !lower.contains('motor') &&
-            !lower.contains('mobil') &&
-            !lower.contains('invoices')) {
-          final formatted = clean.toUpperCase().startsWith('INV-')
-              ? clean.toUpperCase()
-              : 'INV-$clean';
-          if (!_invoices.contains(formatted)) {
-            _invoices.add(formatted);
+    // 1. First, check if primaryText has an explicit "Invoices: ..." payload
+    if (primaryText.contains('Invoices:')) {
+      final parts = primaryText.split('Invoices:');
+      if (parts.length > 1) {
+        final invSection = parts[1].split(';').first.trim();
+        final rawItems = invSection.split(RegExp(r'[,;]'));
+        for (final item in rawItems) {
+          final clean = item.trim();
+          if (clean.isNotEmpty) {
+            final formatted = clean.toUpperCase();
+            if (!_invoices.contains(formatted)) {
+              _invoices.add(formatted);
+            }
           }
         }
       }
     }
 
-    // 3. Fallback default invoices if still empty
+    // 2. If still empty, check for explicit BARANG SUSULAN or numeric regex
+    if (_invoices.isEmpty) {
+      if (primaryText.toUpperCase().contains('BARANG SUSULAN') || primaryText.toUpperCase().contains('BARANG_SUSULAN')) {
+        _invoices.add('BARANG SUSULAN');
+      }
+
+      final regExp = RegExp(r'\b(?:INV-?\d+|\d{4,10})\b', caseSensitive: false);
+      final matches = regExp.allMatches(primaryText);
+      for (final m in matches) {
+        final raw = m.group(0)!;
+        final formatted = raw.toUpperCase().startsWith('INV-')
+            ? raw.toUpperCase()
+            : 'INV-$raw';
+        if (!_invoices.contains(formatted)) {
+          _invoices.add(formatted);
+        }
+      }
+    }
+
+    // 3. Fallback: single clean invoice matching order number (never 3 fake invoices)
     if (_invoices.isEmpty) {
       final baseNum = widget.order.orderNumber.replaceAll(RegExp(r'^ORDER-'), '');
-      _invoices = [
-        'INV-$baseNum-01',
-        'INV-$baseNum-02',
-        'INV-$baseNum-03',
-      ];
+      _invoices = ['INV-$baseNum'];
     }
 
     for (final inv in _invoices) {
