@@ -851,6 +851,9 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 	       COALESCE(o.dispatch_id, '') as order_dispatch_id,
 	       COALESCE(o.pickup_photo_url, '') as pickup_photo_url,
 	       COALESCE(o.pickup_note, '') as pickup_note,
+	       COALESCE(o.arrived_photo_url, '') as arrived_photo_url,
+	       COALESCE(o.arrived_note, '') as arrived_note,
+	       COALESCE(o.handover_photo_url, '') as handover_photo_url,
 	       COALESCE(o.reject_photo_url, '') as reject_photo_url,
 	       COALESCE(o.reject_note, '') as reject_note,
 	       COALESCE(o.reject_reason, '') as reject_reason,
@@ -889,6 +892,9 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 		DistanceKM          float64  `json:"distance_km"`
 		PickupPhotoUrl      string   `json:"pickup_photo_url"`
 		PickupNote          string   `json:"pickup_note"`
+		ArrivedPhotoUrl     string   `json:"arrived_photo_url"`
+		ArrivedNote         string   `json:"arrived_note"`
+		HandoverPhotoUrl    string   `json:"handover_photo_url"`
 		RejectPhotoUrl      string   `json:"reject_photo_url"`
 		RejectNote          string   `json:"reject_note"`
 		RejectReason        string   `json:"reject_reason"`
@@ -933,6 +939,7 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 			&createdAt, &mitraID, &s.DriverID,
 			&s.DriverName, &s.DriverPhone, &s.DriverPlate, &s.DriverVehicle, &s.DistanceKM,
 			&s.ParentOrderNumber, &s.DispatchID, &s.PickupPhotoUrl, &s.PickupNote,
+			&s.ArrivedPhotoUrl, &s.ArrivedNote, &s.HandoverPhotoUrl,
 			&s.RejectPhotoUrl, &s.RejectNote, &s.RejectReason, &s.RejectApproved,
 			&s.UnboxingOption, &s.CheckedInvoices, &s.ExtraItemsNote, &s.ExtraItemsPhotoUrl,
 			&s.FacturePhotoUrl,
@@ -1737,6 +1744,33 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Status berhasil diubah menjadi ON DELIVERY"})
 }
 
+// UpdateOrderArrived handles driver uploading arrival proof photo when arriving at location
+func (h *AdminHandler) UpdateOrderArrived(c *gin.Context) {
+	orderID := c.Param("id")
+	var req struct {
+		ArrivedPhoto string `json:"arrived_photo" binding:"required"`
+		ArrivedNote  string `json:"arrived_note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	ctx := context.Background()
+	_, err := h.DB.Exec(ctx,
+		`UPDATE orders 
+		 SET arrived_photo_url = $1, arrived_note = $2 
+		 WHERE id = $3`,
+		req.ArrivedPhoto, req.ArrivedNote, orderID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan foto tiba di lokasi: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Bukti tiba di lokasi berhasil disimpan"})
+}
+
 // UpdateOrderReject handles driver rejecting a stop pickup
 func (h *AdminHandler) UpdateOrderReject(c *gin.Context) {
 	orderID := c.Param("id")
@@ -1825,6 +1859,7 @@ func (h *AdminHandler) UnboxOrder(c *gin.Context) {
 		ExtraItemsPhotoUrl string `json:"extra_items_photo_url"`
 		FacturePhotoUrl    string `json:"facture_photo_url"`
 		SignaturePhotoUrl  string `json:"signature_photo_url"`
+		HandoverPhotoUrl   string `json:"handover_photo_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Status: "error", Message: "Payload tidak valid: " + err.Error()})
@@ -1841,9 +1876,10 @@ func (h *AdminHandler) UnboxOrder(c *gin.Context) {
 		     extra_items_photo_url = COALESCE(NULLIF($3, ''), extra_items_photo_url), 
 		     facture_photo_url = COALESCE(NULLIF($4, ''), facture_photo_url), 
 		     signature_photo_url = COALESCE(NULLIF($5, ''), signature_photo_url), 
-		     completed_at = $6 
-		 WHERE id = $7`,
-		req.CheckedInvoices, req.ExtraItemsNote, req.ExtraItemsPhotoUrl, req.FacturePhotoUrl, req.SignaturePhotoUrl, now, orderID,
+		     handover_photo_url = COALESCE(NULLIF($6, ''), handover_photo_url), 
+		     completed_at = $7 
+		 WHERE id = $8`,
+		req.CheckedInvoices, req.ExtraItemsNote, req.ExtraItemsPhotoUrl, req.FacturePhotoUrl, req.SignaturePhotoUrl, req.HandoverPhotoUrl, now, orderID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyimpan hasil unboxing: " + err.Error()})

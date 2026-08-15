@@ -13,6 +13,7 @@ import 'package:apps_k24/services/api_service.dart';
 import 'package:apps_k24/models/dashboard_data.dart';
 import 'package:apps_k24/pages/verifikasi_invoice_page.dart';
 import 'package:apps_k24/pages/verifikasi_pod_page.dart';
+import 'package:apps_k24/utils/watermark_helper.dart';
 
 class DetailPesananPage extends StatefulWidget {
   final OrderModel order;
@@ -263,7 +264,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     }
   }
 
-  Future<String?> _pickAndGetBase64() async {
+  Future<String?> _pickAndGetBase64({String? locationText}) async {
     try {
       XFile? image;
       try {
@@ -283,7 +284,17 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
 
       if (image != null) {
         final bytes = await File(image.path).readAsBytes();
-        return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        final rawBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        final driverName = widget.driverName.isNotEmpty ? widget.driverName : 'Driver K-24';
+        final loc = (locationText != null && locationText.trim().isNotEmpty)
+            ? locationText
+            : (_currentOrder.pharmacyName.isNotEmpty ? _currentOrder.pharmacyName : 'Gudang K-24 Matraman');
+        return await WatermarkHelper.addWatermarkToBase64(
+          base64Image: rawBase64,
+          driverName: driverName,
+          locationText: loc,
+          titleText: 'K-24 BUKTI PICKUP GUDANG',
+        );
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
@@ -291,10 +302,47 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     return null;
   }
 
+  Future<void> _sendWhatsAppPickupReport({
+    required String pickupPhotoUrl,
+    required String pickupNote,
+  }) async {
+    const waNumber = '6287877807780';
+    final now = DateTime.now();
+    final dateStr = '${now.day}/${now.month}/${now.year}';
+    final pickupTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
+    final driverName = widget.driverName.isNotEmpty ? widget.driverName : 'Driver K-24';
+    final totalStops = _batchStops.isNotEmpty ? _batchStops.length : 1;
+    final noteText = pickupNote.trim().isNotEmpty ? pickupNote.trim() : 'Barang sudah diambil dari Gudang K-24';
+
+    final message = '''K24 JAKARTA
+LAPORAN PICKUP GUDANG
+Tanggal: $dateStr
+Jam pickup: $pickupTimeStr
+Nama driver: $driverName
+Jumlah alamat: $totalStops Apotek
+Catatan: $noteText
+——————————————————————
+📷 BUKTI FOTO PICKUP:
+$pickupPhotoUrl''';
+
+    final encodedMessage = Uri.encodeComponent(message);
+    final waUrl = Uri.parse('https://wa.me/$waNumber?text=$encodedMessage');
+
+    try {
+      if (await canLaunchUrl(waUrl)) {
+        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(waUrl, mode: LaunchMode.externalNonBrowserApplication);
+      }
+    } catch (e) {
+      debugPrint('[WA Pickup] Failed to launch WhatsApp: $e');
+    }
+  }
+
   void _showPickupModal() {
-    String? base64Photo;
     final noteController = TextEditingController();
     bool modalLoading = false;
+    final List<String> photos = [];
 
     showModalBottomSheet(
       context: context,
@@ -302,7 +350,6 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        List<String> photos = [];
         return StatefulBuilder(
           builder: (context, setModalState) => Padding(
             padding: EdgeInsets.only(
@@ -346,7 +393,9 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () async {
-                      final img = await _pickAndGetBase64();
+                      final img = await _pickAndGetBase64(
+                        locationText: _currentOrder.pharmacyName.isNotEmpty ? _currentOrder.pharmacyName : 'Gudang K-24 Matraman',
+                      );
                       if (img != null) {
                         setModalState(() {
                           photos.add(img);
@@ -406,7 +455,9 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
                             }
                             return GestureDetector(
                               onTap: () async {
-                                final img = await _pickAndGetBase64();
+                                final img = await _pickAndGetBase64(
+                                  locationText: _currentOrder.pharmacyName.isNotEmpty ? _currentOrder.pharmacyName : 'Gudang K-24 Matraman',
+                                );
                                 if (img != null) {
                                   setModalState(() => photos.add(img));
                                 }
@@ -465,6 +516,10 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
                       );
                       if (mounted) {
                         Navigator.pop(context);
+                        await _sendWhatsAppPickupReport(
+                          pickupPhotoUrl: payload,
+                          pickupNote: noteController.text,
+                        );
                         await _refreshOrderDetails();
                       }
                     } catch (e) {
@@ -1172,7 +1227,150 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
           label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
         );
       }
-    } else if (_currentOrder.status == 'DELIVERING' || _currentOrder.status == 'PENDING') {
+  void _showArrivedAtLocationModal() {
+    final noteController = TextEditingController();
+    String? arrivedPhotoBase64;
+    bool isSubmitting = false;
+
+    final targetName = _currentOrder.customerName.isNotEmpty ? _currentOrder.customerName : _currentOrder.pharmacyName;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text(
+                      'Konfirmasi Tiba di Lokasi',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Ambil foto bukti bahwa driver telah tiba di apotek tujuan ($targetName)',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'Poppins'),
+                ),
+                gapH16,
+                if (arrivedPhotoBase64 == null)
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 80),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      side: const BorderSide(color: AppColors.secondaryBlue, width: 1.5),
+                    ),
+                    onPressed: () async {
+                      final img = await _pickAndGetBase64(locationText: targetName);
+                      if (img != null) {
+                        setModalState(() => arrivedPhotoBase64 = img);
+                      }
+                    },
+                    icon: const Icon(Icons.camera_alt_outlined, color: AppColors.secondaryBlue),
+                    label: const Text('Foto Tiba di Lokasi (Wajib)', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, color: AppColors.secondaryBlue)),
+                  )
+                else
+                  Stack(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        height: 160,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            base64Decode(arrivedPhotoBase64!.split(',')[1]),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () => setModalState(() => arrivedPhotoBase64 = null),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(color: Colors.black64, shape: BoxShape.circle),
+                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                gapH12,
+                TextField(
+                  controller: noteController,
+                  decoration: InputDecoration(
+                    labelText: 'Catatan Tiba di Lokasi (Opsional)',
+                    hintText: 'Contoh: Sudah parkir di depan apotek...',
+                    labelStyle: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  maxLines: 2,
+                ),
+                gapH20,
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondaryBlue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: isSubmitting || arrivedPhotoBase64 == null ? null : () async {
+                    setModalState(() => isSubmitting = true);
+                    try {
+                      await ApiService.updateOrderArrived(
+                        orderId: _currentOrder.id,
+                        arrivedPhoto: arrivedPhotoBase64!,
+                        arrivedNote: noteController.text,
+                      );
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('✅ Bukti Tiba di Lokasi Berhasil Disimpan'), backgroundColor: AppColors.primaryGreen),
+                        );
+                        await _refreshOrderDetails();
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Gagal: $e'), backgroundColor: Colors.red),
+                      );
+                    } finally {
+                      setModalState(() => isSubmitting = false);
+                    }
+                  },
+                  child: isSubmitting
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Simpan Bukti Tiba di Lokasi', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionButtons() {
+    if (_currentOrder.status == 'WAITING_FOR_PICKUP') {
       return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryGreen,
@@ -1181,10 +1379,96 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 0,
         ),
-        onPressed: _showUnboxingOptionDialog,
-        icon: const Icon(Icons.assignment_turned_in_rounded),
-        label: const Text('Sudah di titik / Verifikasi Invoice', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        onPressed: _showPickupModal,
+        icon: const Icon(Icons.qr_code_scanner_rounded),
+        label: const Text('Upload Bukti Pickup', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
       );
+    } else if (_currentOrder.status == 'READY_FOR_PICKUP_FACTURE') {
+      final nextStop = _nextUncompletedStop;
+      if (nextStop != null) {
+        final targetName = nextStop.customerName.isNotEmpty ? nextStop.customerName : nextStop.pharmacyName;
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.secondaryBlue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DetailPesananPage(order: nextStop),
+              ),
+            );
+          },
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: Text('Lanjut Pengantaran Ke ($targetName)', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      } else {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      }
+    } else if (_currentOrder.status == 'DELIVERING' || _currentOrder.status == 'PENDING') {
+      if (_currentOrder.arrivedPhotoUrl.isEmpty) {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.secondaryBlue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: _showArrivedAtLocationModal,
+          icon: const Icon(Icons.location_on_rounded),
+          label: const Text('📍 Sudah Tiba di Lokasi', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      } else {
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD1FAE5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF10B981)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
+                  SizedBox(width: 6),
+                  Text('Driver Sudah Tiba di Lokasi Apotek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins')),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              onPressed: _showUnboxingOptionDialog,
+              icon: const Icon(Icons.assignment_turned_in_rounded),
+              label: const Text('📋 Verifikasi Invoice / Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
+          ],
+        );
+      }
     }
     return const SizedBox.shrink();
   }

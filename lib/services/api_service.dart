@@ -680,6 +680,25 @@ class ApiService {
     }
   }
 
+  // Update order arrival proof photo
+  static Future<void> updateOrderArrived({
+    required int orderId,
+    required String arrivedPhoto,
+    String? arrivedNote,
+  }) async {
+    final url = Uri.parse('$baseUrl/driver/orders/$orderId/arrived');
+    final headers = await _getHeaders(authRequired: true);
+    final body = jsonEncode({
+      'arrived_photo': arrivedPhoto,
+      'arrived_note': arrivedNote ?? '',
+    });
+
+    final response = await http.post(url, headers: headers, body: body);
+    if (response.statusCode != 200) {
+      throw Exception(_parseError(response));
+    }
+  }
+
   // Reject order pickup/stop
   static Future<void> updateOrderReject({
     required int orderId,
@@ -726,6 +745,7 @@ class ApiService {
     String? signaturePhoto,
     String? extraItemsNote,
     String? extraItemsPhoto,
+    String? handoverPhoto,
   }) async {
     final url = Uri.parse('$baseUrl/public/orders/$orderId/unbox');
     final headers = {'Content-Type': 'application/json'};
@@ -735,6 +755,7 @@ class ApiService {
       'extra_items_photo_url': extraItemsPhoto ?? facturePhoto,
       'facture_photo_url': facturePhoto,
       'signature_photo_url': signaturePhoto ?? '',
+      'handover_photo_url': handoverPhoto ?? '',
     });
 
     final response = await http.post(url, headers: headers, body: body);

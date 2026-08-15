@@ -12,6 +12,7 @@ import 'package:apps_k24/services/api_service.dart';
 import 'package:apps_k24/theme/app_colors.dart';
 import 'package:apps_k24/theme/gaps.dart';
 import 'package:apps_k24/components/signature_pad.dart';
+import 'package:apps_k24/utils/watermark_helper.dart';
 
 class VerifikasiInvoicePage extends StatefulWidget {
   final OrderModel order;
@@ -33,6 +34,10 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
   final GlobalKey<SignaturePadWidgetState> _signaturePadKey = GlobalKey();
   
   bool _submitting = false;
+
+  // Handover Photo State
+  String? _handoverPhotoBase64;
+  File? _handoverPhotoFile;
 
   // Invoice Checklist state
   late List<String> _invoices;
@@ -188,14 +193,59 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         });
 
         final bytes = await photo.readAsBytes();
+        final rawBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        final apotekName = widget.order.customerName.isNotEmpty
+            ? widget.order.customerName
+            : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
+
+        final watermarkedBase64 = await WatermarkHelper.addWatermarkToBase64(
+          base64Image: rawBase64,
+          driverName: _driverName,
+          locationText: '$apotekName ($inv)',
+          titleText: 'K-24 FAKTUR FISIK VERIFIED',
+        );
+
         _factureBytesMap[inv] = bytes;
-        _facturePhotos[inv] = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        _facturePhotos[inv] = watermarkedBase64;
       }
     } catch (e) {
       debugPrint('Error picking photo for $inv: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal mengambil foto untuk $inv: $e'), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  Future<void> _pickHandoverPhoto() async {
+    try {
+      XFile? photo;
+      try {
+        photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 70, maxWidth: 1024);
+      } catch (_) {
+        photo = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1024);
+      }
+
+      if (photo != null) {
+        final bytes = await photo.readAsBytes();
+        final rawBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        final apotekName = widget.order.customerName.isNotEmpty
+            ? widget.order.customerName
+            : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
+
+        final watermarked = await WatermarkHelper.addWatermarkToBase64(
+          base64Image: rawBase64,
+          driverName: _driverName,
+          locationText: apotekName,
+          titleText: 'K-24 BUKTI SERAH TERIMA PAKET',
+        );
+
+        setState(() {
+          _handoverPhotoFile = File(photo!.path);
+          _handoverPhotoBase64 = watermarked;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking handover photo: $e');
     }
   }
 
@@ -261,6 +311,7 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         checkedInvoices: checkedPayload,
         facturePhoto: combinedFacturePhoto,
         signaturePhoto: sig,
+        handoverPhoto: _handoverPhotoBase64,
       );
 
       // Open WhatsApp automatically to send real-time delivery report per stop
@@ -351,11 +402,18 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         ? widget.order.customerName
         : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
 
-    final invoiceListText = _invoices.map((inv) {
-      final stat = _invoiceStatuses[inv] ?? 'done';
-      final note = stat == 'missing' ? ' (Tidak Sesuai: ${_missingNotes[inv]})' : '';
-      return '- $inv: ${stat.toUpperCase()}$note';
-    }).join('\n');
+    final hasMissing = _invoices.any((inv) => (_invoiceStatuses[inv] ?? 'done') != 'done');
+    final String invoiceListText;
+
+    if (!hasMissing) {
+      invoiceListText = '• Invoice semua sudah sesuai';
+    } else {
+      final nonMatching = _invoices.where((inv) => (_invoiceStatuses[inv] ?? 'done') != 'done').toList();
+      invoiceListText = nonMatching.map((inv) {
+        final note = _missingNotes[inv]?.isNotEmpty == true ? ' (Keterangan: ${_missingNotes[inv]})' : '';
+        return '• $inv: TIDAK SESUAI$note';
+      }).join('\n');
+    }
 
     final recipientName = _recipientNameController.text.trim().isNotEmpty
         ? _recipientNameController.text.trim()
@@ -754,6 +812,58 @@ $webUrl''';
                     ),
                     style: const TextStyle(fontSize: 12, fontFamily: 'Poppins'),
                   ),
+                  const SizedBox(height: 14),
+                  const Text('Foto Serah Terima Paket / Penerima (Bukti Serah Terima)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Poppins')),
+                  const SizedBox(height: 6),
+                  if (_handoverPhotoFile == null)
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 44),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: AppColors.secondaryBlue, width: 1.2),
+                      ),
+                      onPressed: _pickHandoverPhoto,
+                      icon: const Icon(Icons.camera_alt_outlined, color: AppColors.secondaryBlue, size: 18),
+                      label: const Text(
+                        'Upload Foto Serah Terima Paket / Penerima',
+                        style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.secondaryBlue),
+                      ),
+                    )
+                  else
+                    Stack(
+                      children: [
+                        Container(
+                          height: 130,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.secondaryBlue, width: 1.5),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(
+                              _handoverPhotoFile!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: GestureDetector(
+                            onTap: () => setState(() {
+                              _handoverPhotoFile = null;
+                              _handoverPhotoBase64 = null;
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, color: Colors.white, size: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

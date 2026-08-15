@@ -64,6 +64,9 @@ type Order struct {
 	DistanceKM          float64    `json:"distance_km"`
 	PickupPhotoUrl      string     `json:"pickup_photo_url"`
 	PickupNote          string     `json:"pickup_note"`
+	ArrivedPhotoUrl     string     `json:"arrived_photo_url"`
+	ArrivedNote         string     `json:"arrived_note"`
+	HandoverPhotoUrl    string     `json:"handover_photo_url"`
 	RejectPhotoUrl      string     `json:"reject_photo_url"`
 	RejectNote          string     `json:"reject_note"`
 	RejectReason        string     `json:"reject_reason"`

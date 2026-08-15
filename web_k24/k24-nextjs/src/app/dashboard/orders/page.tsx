@@ -43,6 +43,9 @@ interface StopItem {
   distance_km: number
   pickup_photo_url?: string
   pickup_note?: string
+  arrived_photo_url?: string
+  arrived_note?: string
+  handover_photo_url?: string
   reject_photo_url?: string
   reject_note?: string
   reject_reason?: string
@@ -388,6 +391,17 @@ export default function OrdersPage() {
           </div>
         )}
 
+        {/* 1.5 Foto Bukti Tiba di Lokasi (Driver) */}
+        {s.arrived_photo_url && (
+          <div className="p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900 bg-emerald-50/20 dark:bg-emerald-950/10 space-y-2">
+            <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 font-bold">
+              <span>📍 Foto Bukti Tiba di Lokasi (Driver)</span>
+              {s.arrived_note && <span className="font-normal italic text-muted-foreground">"{s.arrived_note}"</span>}
+            </div>
+            <PhotoGalleryViewer photoField={s.arrived_photo_url} title="Bukti Tiba di Lokasi" />
+          </div>
+        )}
+
         {/* Driver Rejection Case */}
         {s.status === 'REJECTED_WAITING_APPROVAL' && (
           <div className="p-4 rounded-xl border border-dashed border-rose-300 bg-rose-50/10 dark:bg-rose-950/10 space-y-3.5">
@@ -464,6 +478,14 @@ export default function OrdersPage() {
                   <PhotoGalleryViewer photoField={s.facture_photo_url} title="Foto Faktur Tanda Tangan & Cap" />
                 </div>
               ) : null}
+
+              {/* 4. Foto Serah Terima Paket (Penerima) */}
+              {s.handover_photo_url && (
+                <div className="pt-2 border-t border-dashed border-border/80">
+                  <span className="text-xs font-bold text-foreground block mb-2">🤝 Foto Bukti Serah Terima Paket (Penerima/Apoteker):</span>
+                  <PhotoGalleryViewer photoField={s.handover_photo_url} title="Foto Serah Terima Paket" />
+                </div>
+              )}
             </div>
 
             {s.status !== 'COMPLETED' && s.status === 'COMPLETED_WAITING_APPROVAL' && (

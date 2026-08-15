@@ -116,6 +116,7 @@ func main() {
 			driver.POST("/location", dashboardHandler.UpdateDriverLocation)
 			driver.POST("/orders/:id/complete", dashboardHandler.CompleteOrder)
 			driver.POST("/orders/:id/pickup", adminHandler.UpdateOrderPickup)
+			driver.POST("/orders/:id/arrived", adminHandler.UpdateOrderArrived)
 			driver.POST("/orders/:id/reject", adminHandler.UpdateOrderReject)
 			driver.POST("/orders/:id/facture", adminHandler.UpdateOrderFacture)
 			driver.POST("/orders/:id/pod-complete", adminHandler.CompletePODOrder)

@@ -82,6 +82,9 @@ class OrderModel {
   final String facturePhotoUrl;
   final String signaturePhotoUrl;
   final String pickupPhotoUrl;
+  final String arrivedPhotoUrl;
+  final String arrivedNote;
+  final String handoverPhotoUrl;
 
   OrderModel({
     required this.id,
@@ -109,6 +112,9 @@ class OrderModel {
     this.facturePhotoUrl = '',
     this.signaturePhotoUrl = '',
     this.pickupPhotoUrl = '',
+    this.arrivedPhotoUrl = '',
+    this.arrivedNote = '',
+    this.handoverPhotoUrl = '',
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
@@ -144,6 +150,9 @@ class OrderModel {
       facturePhotoUrl: json['facture_photo_url'] as String? ?? '',
       signaturePhotoUrl: json['signature_photo_url'] as String? ?? '',
       pickupPhotoUrl: json['pickup_photo_url'] as String? ?? '',
+      arrivedPhotoUrl: json['arrived_photo_url'] as String? ?? '',
+      arrivedNote: json['arrived_note'] as String? ?? '',
+      handoverPhotoUrl: json['handover_photo_url'] as String? ?? '',
     );
   }
 }

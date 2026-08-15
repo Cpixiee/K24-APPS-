@@ -35,12 +35,12 @@ func LoadConfig() *Config {
 		DBName:     getEnv("DB_NAME", "k24_db"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:  getEnv("JWT_SECRET", "k24_driver_secret_jwt_key_2026"),
-		CORSOrigin: getEnv("CORS_ORIGIN", "http://localhost:5173"),
+		CORSOrigin: getEnv("CORS_ORIGIN", "*"),
 	}
 }
 
 func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
+	if value, exists := os.LookupEnv(key); exists && value != "" {
 		return value
 	}
 	return defaultValue
