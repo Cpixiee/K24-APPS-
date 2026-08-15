@@ -1870,7 +1870,7 @@ func (h *AdminHandler) UnboxOrder(c *gin.Context) {
 	now := time.Now()
 	_, err := h.DB.Exec(ctx,
 		`UPDATE orders 
-		 SET status = 'COMPLETED', unboxing_option = 'UNBOXING', 
+		 SET status = 'READY_FOR_PICKUP_FACTURE', unboxing_option = 'UNBOXING', 
 		     checked_invoices = COALESCE(NULLIF($1, ''), checked_invoices), 
 		     extra_items_note = COALESCE(NULLIF($2, ''), extra_items_note), 
 		     extra_items_photo_url = COALESCE(NULLIF($3, ''), extra_items_photo_url), 
@@ -2081,15 +2081,33 @@ func (h *AdminHandler) CompletePODOrder(c *gin.Context) {
 	var parentOrderNum, dispatchID string
 	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(parent_order_number, ''), COALESCE(dispatch_id, '') FROM orders WHERE id = $1", orderID).Scan(&parentOrderNum, &dispatchID)
 
-	_, err := h.DB.Exec(ctx,
-		`UPDATE orders 
-		 SET status = 'COMPLETED', 
-		     pod_signature_photo_url = COALESCE(NULLIF($1, ''), pod_signature_photo_url), 
-		     facture_photo_url = COALESCE(NULLIF($2, ''), facture_photo_url), 
-		     completed_at = $3 
-		 WHERE id::text = $4 OR order_number = $4`,
-		req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, orderID,
-	)
+	targetMatch := dispatchID
+	if targetMatch == "" {
+		targetMatch = parentOrderNum
+	}
+
+	var err error
+	if targetMatch != "" {
+		_, err = h.DB.Exec(ctx,
+			`UPDATE orders 
+			 SET status = 'COMPLETED', 
+			     pod_signature_photo_url = COALESCE(NULLIF($1, ''), pod_signature_photo_url), 
+			     facture_photo_url = COALESCE(NULLIF($2, ''), facture_photo_url), 
+			     completed_at = $3 
+			 WHERE dispatch_id = $4 OR parent_order_number = $4 OR order_number = $4 OR id::text = $4`,
+			req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, targetMatch,
+		)
+	} else {
+		_, err = h.DB.Exec(ctx,
+			`UPDATE orders 
+			 SET status = 'COMPLETED', 
+			     pod_signature_photo_url = COALESCE(NULLIF($1, ''), pod_signature_photo_url), 
+			     facture_photo_url = COALESCE(NULLIF($2, ''), facture_photo_url), 
+			     completed_at = $3 
+			 WHERE id::text = $4 OR order_number = $4`,
+			req.PodSignaturePhotoUrl, req.FacturePhotoUrl, now, orderID,
+		)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal menyelesaikan pengembalian POD: " + err.Error()})
 		return

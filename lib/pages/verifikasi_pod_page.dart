@@ -51,10 +51,12 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
     setState(() => _submitting = true);
 
     try {
-      await ApiService.completePODOrder(
-        orderId: _primaryOrder.id,
-        podSignaturePhoto: sig,
-      );
+      for (final o in _orders) {
+        await ApiService.completePODOrder(
+          orderId: o.id,
+          podSignaturePhoto: sig,
+        );
+      }
 
       if (!mounted) return;
 
@@ -86,11 +88,6 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
         ? primary.dispatchId
         : (primary.parentOrderNumber.isNotEmpty ? primary.parentOrderNumber : primary.orderNumber);
 
-    // Combine checked invoices from all stops
-    final allCheckedInvoices = ordersList
-        .map((o) => o.checkedInvoices)
-        .where((inv) => inv.isNotEmpty)
-        .join('\n---\n');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -205,26 +202,44 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
                     ],
                   ),
                   gapH12,
-                  if (allCheckedInvoices.isNotEmpty) ...[
-                    const Text(
-                      'Rincian Invoice Terverifikasi:',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.darkGrey, fontFamily: 'Poppins'),
-                    ),
-                    gapH4,
-                    Container(
+                  gapH12,
+                  const Text(
+                    'Rincian Invoice Terverifikasi Per Alamat:',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.darkGrey, fontFamily: 'Poppins'),
+                  ),
+                  gapH8,
+                  ...ordersList.map((o) {
+                    final invText = o.checkedInvoices.isNotEmpty ? o.checkedInvoices : o.medicineSummary;
+                    final pharmName = o.customerName.isNotEmpty ? o.customerName : o.pharmacyName;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: Colors.grey.shade200),
                       ),
-                      child: Text(
-                        allCheckedInvoices,
-                        style: const TextStyle(fontSize: 11, fontFamily: 'Poppins', color: Color(0xFF1E293B)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '🏢 $pharmName (${o.orderNumber})',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Poppins', color: AppColors.secondaryBlue),
+                          ),
+                          Text(
+                            '📍 ${o.deliveryAddress}',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'Poppins'),
+                          ),
+                          const Divider(height: 12),
+                          Text(
+                            invText.isNotEmpty ? invText : '• Invoice sudah diverifikasi',
+                            style: const TextStyle(fontSize: 11, fontFamily: 'Poppins', color: Color(0xFF1E293B)),
+                          ),
+                        ],
                       ),
-                    ),
-                    gapH12,
-                  ],
+                    );
+                  }),
+                  gapH12,
 
                   // Display Uploaded Photos for ALL stops in the dispatch group
                   ...ordersList.expand((o) {
