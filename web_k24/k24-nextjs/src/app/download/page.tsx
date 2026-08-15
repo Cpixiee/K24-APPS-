@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Download, ShieldCheck, CheckCircle2, ArrowLeft, RefreshCw,
-  Sparkles, Star, Share2, Info, Check, Smartphone
+  Sparkles, Star, Share2, Info, Check
 } from 'lucide-react'
 
 function DownloadContent() {
@@ -36,16 +36,22 @@ function DownloadContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between selection:bg-emerald-500 selection:text-white relative overflow-hidden font-sans">
+    <div
+      style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+      className="min-h-screen !bg-white text-slate-900 flex flex-col justify-between selection:bg-emerald-500 selection:text-white relative overflow-hidden font-sans"
+    >
       {/* Background Soft Color Accents */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-100/60 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 -right-32 w-96 h-96 bg-teal-100/60 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-100/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 -right-32 w-96 h-96 bg-teal-100/50 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 left-1/3 w-96 h-96 bg-emerald-50/80 rounded-full blur-3xl pointer-events-none" />
 
       {/* Navigation Header */}
-      <header className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between relative z-10 border-b border-slate-200/80 bg-white/70 backdrop-blur-md sticky top-0">
+      <header
+        style={{ backgroundColor: '#ffffff' }}
+        className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between relative z-10 border-b border-slate-200 !bg-white sticky top-0"
+      >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl overflow-hidden border border-slate-200 bg-white p-0.5 shadow-sm">
+          <div className="w-10 h-10 rounded-2xl overflow-hidden border border-slate-200 bg-white p-0.5 shadow-sm shrink-0">
             <img src="/logo_ningrat_app.png" alt="NINGRAT Logo" className="w-full h-full object-contain" />
           </div>
           <div>
@@ -53,7 +59,7 @@ function DownloadContent() {
               NINGRAT
             </span>
             <span className="block text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
-              Driver Mobile Hub
+              Official Driver Hub
             </span>
           </div>
         </div>
@@ -77,15 +83,18 @@ function DownloadContent() {
         </div>
       </header>
 
-      {/* Main Container (Clean White Modern Play Store Layout) */}
+      {/* Main Container (100% PURE WHITE MODERN PLAY STORE UI) */}
       <main className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10 flex-1">
         
         {/* Play Store App Header Hero Card */}
-        <div className="bg-white border border-slate-200/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 mb-6">
+        <div
+          style={{ backgroundColor: '#ffffff' }}
+          className="!bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 mb-6"
+        >
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 mb-6">
-            {/* App Icon (Exact NINGRAT Logo) */}
+            {/* App Icon (Exact NINGRAT Logo from Screenshot 2) */}
             <div className="relative shrink-0">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden bg-white p-1 border-2 border-slate-100 shadow-md">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden bg-white p-1.5 border-2 border-slate-200 shadow-md">
                 <img
                   src="/logo_ningrat_app.png"
                   alt="NINGRAT Logo"
@@ -116,7 +125,7 @@ function DownloadContent() {
           </div>
 
           {/* Play Store Metric Badges Row */}
-          <div className="grid grid-cols-4 gap-2 py-4 border-y border-slate-100 mb-6 text-center bg-slate-50/60 rounded-2xl">
+          <div className="grid grid-cols-4 gap-2 py-4 border-y border-slate-100 mb-6 text-center bg-slate-50 rounded-2xl">
             <div className="flex flex-col items-center justify-center border-r border-slate-200 pr-1">
               <div className="flex items-center gap-1 text-slate-900 font-extrabold text-sm sm:text-base">
                 <span>4.9</span>
@@ -176,7 +185,10 @@ function DownloadContent() {
         </div>
 
         {/* Section: Yang Baru di Versi Ini (What's New) */}
-        <div className="bg-white border border-slate-200/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 mb-6 shadow-md shadow-slate-200/40">
+        <div
+          style={{ backgroundColor: '#ffffff' }}
+          className="!bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 mb-6 shadow-md shadow-slate-200/40"
+        >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-600" />
@@ -221,7 +233,10 @@ function DownloadContent() {
         </div>
 
         {/* Section: Tentang Aplikasi Ini (About this App) */}
-        <div className="bg-white border border-slate-200/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 mb-6 shadow-md shadow-slate-200/40">
+        <div
+          style={{ backgroundColor: '#ffffff' }}
+          className="!bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 mb-6 shadow-md shadow-slate-200/40"
+        >
           <h2 className="text-base font-bold text-slate-900 mb-3">Tentang Aplikasi NINGRAT</h2>
           <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
             Aplikasi NINGRAT resmi digunakan oleh seluruh armada kurir internal PT K-24 Indonesia untuk mendukung kelancaran pengantaran obat-obatan dan pasokan farmasi ke jaringan Apotek K-24 secara real-time.
@@ -244,7 +259,10 @@ function DownloadContent() {
         </div>
 
         {/* Section: Petunjuk Install Android */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-md shadow-slate-200/40">
+        <div
+          style={{ backgroundColor: '#ffffff' }}
+          className="!bg-white border border-slate-200/90 rounded-3xl p-6 shadow-md shadow-slate-200/40"
+        >
           <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
             <Info className="w-4 h-4 text-teal-600" />
             <span>Petunjuk Pengunduhan & Pembaruan (Android)</span>
@@ -287,7 +305,7 @@ function DownloadContent() {
 export default function DownloadPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-white text-slate-900 flex items-center justify-center">
         <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
       </div>
     }>
