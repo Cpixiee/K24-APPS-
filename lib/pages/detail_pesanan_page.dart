@@ -35,6 +35,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
   List<LatLng> _routePoints = [];
   bool _loadingRoute = false;
   List<OrderModel> _allActiveOrders = [];
+  String _driverName = 'Driver K-24';
 
   @override
   void initState() {
@@ -50,6 +51,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       if (mounted) {
         setState(() {
           _allActiveOrders = dashboard.activeOrders;
+          _driverName = dashboard.driver.name.isNotEmpty ? dashboard.driver.name : 'Driver K-24';
         });
       }
     } catch (_) {}
@@ -287,7 +289,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       if (image != null) {
         final bytes = await File(image.path).readAsBytes();
         final rawBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-        final driverName = widget.driverName.isNotEmpty ? widget.driverName : 'Driver K-24';
+        final driverName = _driverName.isNotEmpty ? _driverName : 'Driver K-24';
         final loc = (locationText != null && locationText.trim().isNotEmpty)
             ? locationText
             : (_currentOrder.pharmacyName.isNotEmpty ? _currentOrder.pharmacyName : 'Gudang K-24 Matraman');
@@ -311,7 +313,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     final now = DateTime.now();
     final dateStr = '${now.day}/${now.month}/${now.year}';
     final pickupTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
-    final driverName = widget.driverName.isNotEmpty ? widget.driverName : 'Driver K-24';
+    final driverName = _driverName.isNotEmpty ? _driverName : 'Driver K-24';
     final totalStops = _batchStops.isNotEmpty ? _batchStops.length : 1;
     final noteText = pickupNote.trim().isNotEmpty ? pickupNote.trim() : 'Barang sudah diambil dari Gudang K-24';
 
@@ -1139,119 +1141,6 @@ Catatan: $noteText''';
     );
   }
 
-  Widget _buildActionButton() {
-    if (_currentOrder.status == 'READY_FOR_PICKUP_FACTURE' || _currentOrder.status == 'COMPLETED') {
-      final nextStop = _nextUncompletedStop;
-      if (nextStop != null) {
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryGreen,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () {
-            setState(() {
-              _currentOrder = nextStop;
-              _routePoints = [];
-            });
-            _fetchRoute();
-            _refreshOrderDetails();
-          },
-          icon: const Icon(Icons.navigation_rounded),
-          label: Text(
-            'Lanjutkan Titik (Lanjut ke ${nextStop.customerName.isNotEmpty ? nextStop.customerName : (nextStop.pharmacyName.isNotEmpty ? nextStop.pharmacyName : 'Titik Berikutnya')})',
-            style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        );
-      } else {
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.secondaryBlue,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () async {
-            final res = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => VerifikasiPODPage(
-                  order: _currentOrder,
-                ),
-              ),
-            );
-            if (res == true && mounted) {
-              await _refreshOrderDetails();
-              Navigator.pop(context, true);
-            }
-          },
-          icon: const Icon(Icons.assignment_returned_rounded),
-          label: const Text('Verifikasi Pengembalian POD', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-        );
-      }
-    }
-
-    if (_currentOrder.status == 'WAITING_FOR_PICKUP') {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryGreen,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 0,
-        ),
-        onPressed: _showPickupModal,
-        icon: const Icon(Icons.camera_alt_outlined),
-        label: const Text('Upload Bukti Pickup', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-      );
-    } else if (_currentOrder.status == 'PENDING' && _currentOrder.unboxingOption == 'WAITING_FOR_UNBOXING') {
-      // Unboxing ditunda: tampilkan tombol lanjut ke titik berikutnya, atau kembali jika ini titik terakhir
-      final nextDelayStop = _nextUncompletedStop;
-      if (nextDelayStop != null) {
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFF59E0B),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () {
-            setState(() {
-              _currentOrder = nextDelayStop;
-              _routePoints = [];
-            });
-            _fetchRoute();
-            _refreshOrderDetails();
-          },
-          icon: const Icon(Icons.skip_next_rounded),
-          label: Text(
-            'Lanjutkan ke ${nextDelayStop.customerName.isNotEmpty ? nextDelayStop.customerName : (nextDelayStop.pharmacyName.isNotEmpty ? nextDelayStop.pharmacyName : 'Titik Berikutnya')}',
-            style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        );
-      } else {
-        // Titik terakhir & unboxing ditunda → kembali ke daftar pesanan
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6B7280),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-        );
-      }
   void _showArrivedAtLocationModal() {
     final noteController = TextEditingController();
     String? arrivedPhotoBase64;
@@ -1333,7 +1222,7 @@ Catatan: $noteText''';
                           onTap: () => setModalState(() => arrivedPhotoBase64 = null),
                           child: Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(color: Colors.black64, shape: BoxShape.circle),
+                            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                             child: const Icon(Icons.close, color: Colors.white, size: 16),
                           ),
                         ),
@@ -1958,7 +1847,7 @@ Catatan: $noteText''';
                   ],
                 ),
                 child: SafeArea(
-                  child: _buildActionButton(),
+                  child: _buildActionButtons(),
                 ),
               )
             : null,
