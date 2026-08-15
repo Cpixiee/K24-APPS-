@@ -98,17 +98,6 @@ func main() {
 			auth.POST("/face-login", securityHandler.FaceLogin)
 		}
 
-		// Public App Version route for Auto-Update
-		api.GET("/app-version", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"latest_version": "1.0.2",
-				"version_code":   2,
-				"download_url":   "http://103.236.140.19:9002/download?update=true",
-				"force_update":   false,
-				"release_notes":  "Pembaruan fitur foto watermark presisi, alur Tiba di Lokasi, dan perbaikan daftar invoice.",
-			})
-		})
-
 		// Public Pharmacist unboxing & K24 POD verification routes
 		api.GET("/public/orders/:id", adminHandler.GetPublicOrderDetail)
 		api.POST("/public/orders/:id/unbox", adminHandler.UnboxOrder)
@@ -117,6 +106,10 @@ func main() {
 		api.POST("/public/orders/:id/approve-pod", adminHandler.PublicApprovePOD)
 		api.POST("/public/orders/:id/pod-complete", adminHandler.CompletePODOrder)
 		api.GET("/public/dispatch/:dispatch_id/live-track", adminHandler.GetDispatchLiveTracking)
+		api.GET("/public/download-app", func(c *gin.Context) {
+			c.Header("Content-Disposition", "attachment; filename=K24-Driver-App.apk")
+			c.File("./uploads/driver-app.apk")
+		})
 
 		// Protected driver routes
 		driver := api.Group("/driver")
