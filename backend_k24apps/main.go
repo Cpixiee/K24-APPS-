@@ -103,7 +103,7 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{
 				"latest_version": "1.0.2",
 				"version_code":   2,
-				"download_url":   "http://103.236.140.19:9002/downloads/k24-driver-latest.apk",
+				"download_url":   "http://103.236.140.19:9002/download?update=true",
 				"force_update":   false,
 				"release_notes":  "Pembaruan fitur foto watermark presisi, alur Tiba di Lokasi, dan perbaikan daftar invoice.",
 			})
