@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Download, ShieldCheck, Smartphone, CheckCircle2, ArrowLeft, RefreshCw,
-  FileText, Info, Star, Share2, Sparkles, AlertCircle, HardDrive, Cpu, Check
+  FileText, Info, Star, Share2, Sparkles, Check
 } from 'lucide-react'
 
 function DownloadContent() {
@@ -24,8 +24,8 @@ function DownloadContent() {
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: 'K-24 Logistics Driver App',
-        text: 'Download/Update Aplikasi Driver K-24 Logistics Terbaru (v1.0.2)',
+        title: 'NINGRAT K-24 Driver App',
+        text: 'Download/Update Aplikasi NINGRAT Driver K-24 Logistics (v1.0.2)',
         url: window.location.href,
       }).catch(() => {})
     } else {
@@ -45,17 +45,15 @@ function DownloadContent() {
       {/* Navigation Header */}
       <header className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between relative z-10 border-b border-slate-800/50">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20">
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Smartphone className="w-4 h-4 text-emerald-400" />
-            </div>
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20 border border-emerald-500/40 bg-white flex items-center justify-center">
+            <img src="/logo_ningrat_icon.jpg" alt="NINGRAT Logo" className="w-full h-full object-cover" />
           </div>
           <div>
-            <span className="text-base font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-              K-24 LOGISTICS
+            <span className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
+              NINGRAT <span className="text-emerald-400 font-bold text-xs uppercase tracking-wider">K-24</span>
             </span>
-            <span className="block text-[9px] font-semibold text-emerald-400 uppercase tracking-widest">
-              App Store & Update Portal
+            <span className="block text-[9px] font-semibold text-slate-400 uppercase tracking-widest">
+              Official Driver Platform
             </span>
           </div>
         </div>
@@ -79,19 +77,20 @@ function DownloadContent() {
         </div>
       </header>
 
-      {/* Main Container Layout (Play Store Inspired) */}
+      {/* Main Container Layout (Play Store Inspired with NINGRAT branding) */}
       <main className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 relative z-10 flex-1">
         
         {/* Play Store App Header Section */}
         <div className="bg-slate-900/80 border border-slate-800/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl shadow-emerald-950/20 mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 mb-6">
-            {/* App Icon */}
+            {/* App Icon (Official NINGRAT Logo) */}
             <div className="relative shrink-0">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-emerald-400 p-1 shadow-xl shadow-emerald-500/25">
-                <div className="w-full h-full bg-slate-950 rounded-[14px] flex flex-col items-center justify-center p-2 text-center">
-                  <Smartphone className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400 mb-1" />
-                  <span className="text-[9px] font-black tracking-tighter text-white uppercase">DRIVER</span>
-                </div>
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden p-0.5 bg-gradient-to-tr from-emerald-500 via-teal-400 to-emerald-300 shadow-xl shadow-emerald-500/25">
+                <img
+                  src="/logo_ningrat_text.jpg"
+                  alt="NINGRAT App Icon"
+                  className="w-full h-full object-cover rounded-[14px]"
+                />
               </div>
               <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 rounded-full p-1 shadow-md" title="Resmi & Terverifikasi">
                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -104,14 +103,14 @@ function DownloadContent() {
                 <Sparkles className="w-3 h-3" />
                 <span>{isUpdateMode ? 'Update Aplikasi Tersedia' : 'Aplikasi Resmi Android'}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-1">
-                K-24 Logistics Driver
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-1">
+                NINGRAT DRIVER
               </h1>
               <p className="text-xs sm:text-sm font-semibold text-emerald-400 mb-1">
-                PT K-24 Indonesia • Logistik & Distribusi Farmasi
+                PT K-24 Indonesia • K-24 Logistics
               </p>
               <p className="text-xs text-slate-400">
-                Aplikasi khusus driver & kurir internal K-24 Logistics
+                Aplikasi khusus kurir & driver internal pengiriman farmasi NINGRAT
               </p>
             </div>
           </div>
@@ -143,7 +142,7 @@ function DownloadContent() {
           <div className="space-y-3">
             <a
               href="/downloads/k24-driver-latest.apk"
-              download="k24-driver-v1.0.2.apk"
+              download="ningrat-driver-v1.0.2.apk"
               onClick={handleDownload}
               className="group relative flex items-center justify-center gap-3 w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base sm:text-lg shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
             >
@@ -155,12 +154,12 @@ function DownloadContent() {
               ) : isUpdateMode ? (
                 <>
                   <RefreshCw className="w-5 h-5 text-slate-950 group-hover:rotate-180 transition-transform duration-500" />
-                  <span>🔄 Update Aplikasi Sekarang (v1.0.2)</span>
+                  <span>🔄 Update NINGRAT Driver (v1.0.2)</span>
                 </>
               ) : (
                 <>
                   <Download className="w-5 h-5 text-slate-950 group-hover:scale-110 transition-transform duration-200" />
-                  <span>📥 Download APK Driver (v1.0.2)</span>
+                  <span>📥 Download NINGRAT Driver (v1.0.2)</span>
                 </>
               )}
             </a>
@@ -171,7 +170,7 @@ function DownloadContent() {
                 Play Protect Verified
               </span>
               <span>•</span>
-              <span>Official K-24 Release</span>
+              <span>Official NINGRAT Release</span>
             </div>
           </div>
         </div>
@@ -181,7 +180,7 @@ function DownloadContent() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>Yang Baru di Versi 1.0.2</span>
+              <span>Yang Baru di NINGRAT v1.0.2</span>
             </h2>
             <span className="text-xs text-slate-400">Diperbarui 15 Agu 2026</span>
           </div>
@@ -206,7 +205,7 @@ function DownloadContent() {
             <div className="flex items-start gap-3 bg-slate-950/60 border border-slate-800/60 rounded-xl p-3">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div>
-                <strong className="text-slate-100 block mb-0.5">Form Upload Foto Serah Terima Paket</strong>
+                <strong className="text-slate-100 block mb-0.5">Foto Serah Terima Paket</strong>
                 Menambahkan kolom bukti penyerahan barang langsung kepada apoteker/petugas apotek.
               </div>
             </div>
@@ -223,9 +222,9 @@ function DownloadContent() {
 
         {/* Section: Tentang Aplikasi Ini (About this App) */}
         <div className="bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 mb-6">
-          <h2 className="text-base font-bold text-white mb-3">Tentang Aplikasi Ini</h2>
+          <h2 className="text-base font-bold text-white mb-3">Tentang Aplikasi NINGRAT Driver</h2>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
-            Aplikasi resmi driver K-24 Logistics digunakan oleh seluruh armada kurir internal PT K-24 Indonesia untuk mendukung kelancaran pengantaran obat-obatan dan pasokan farmasi ke jaringan Apotek K-24 secara real-time.
+            Aplikasi NINGRAT resmi digunakan oleh seluruh armada kurir internal PT K-24 Indonesia untuk mendukung kelancaran pengantaran obat-obatan dan pasokan farmasi ke jaringan Apotek K-24 secara real-time.
           </p>
 
           <div className="flex flex-wrap gap-2 pt-2">
@@ -268,8 +267,8 @@ function DownloadContent() {
             <div className="flex gap-3">
               <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
               <div>
-                <strong className="text-slate-100 block">Selesai & Buka Aplikasi</strong>
-                Klik <span className="text-emerald-400 font-semibold">Install</span>. Aplikasi akan otomatis diperbarui tanpa menghapus data sesi login Anda.
+                <strong className="text-slate-100 block">Selesai & Buka NINGRAT!</strong>
+                Klik <span className="text-emerald-400 font-semibold">Install</span>. Aplikasi NINGRAT akan otomatis diperbarui tanpa menghapus data akun/sesi Anda.
               </div>
             </div>
           </div>
@@ -279,7 +278,7 @@ function DownloadContent() {
 
       {/* Footer */}
       <footer className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 text-center text-xs text-slate-400 relative z-10 border-t border-slate-800/50">
-        <p>© 2026 PT K-24 Indonesia — Official Driver Distribution Platform.</p>
+        <p>© 2026 PT K-24 Indonesia — NINGRAT Driver Official Distribution Platform.</p>
       </footer>
     </div>
   )
