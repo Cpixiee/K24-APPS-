@@ -309,9 +309,9 @@ func (h *DashboardHandler) CompleteOrder(c *gin.Context) {
 		return
 	}
 
-	// Update status
+	// Update status to READY_FOR_PICKUP_FACTURE (Pengembalian POD)
 	_, err = h.DB.Exec(ctx,
-		"UPDATE orders SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP WHERE id = $1 AND driver_id = $2",
+		"UPDATE orders SET status = 'READY_FOR_PICKUP_FACTURE', unboxing_option = 'UNBOXING' WHERE id = $1 AND driver_id = $2",
 		orderID,
 		driverID,
 	)

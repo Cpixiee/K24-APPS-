@@ -1074,10 +1074,17 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _handleCompleteOrder(order.id),
-                    icon: const Icon(Icons.check_circle_rounded, size: 16),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailPesananPage(order: order),
+                        ),
+                      ).then((_) => _fetchDashboardData());
+                    },
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 16),
                     label: Text(
-                      stopsCount > 1 ? 'Titik $activeStopIndex' : 'Selesai',
+                      stopsCount > 1 ? 'Titik $activeStopIndex' : 'Detail',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
