@@ -83,8 +83,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
     try {
       final info = await ApiService.checkAppVersion();
       if (info != null && mounted) {
-        // Current App Version Code is 1. If server version > 1, prompt update
-        const currentVersionCode = 1;
+        // Current App Version Code is 2 for v1.0.2 release
+        const currentVersionCode = 2;
         if (info.versionCode > currentVersionCode) {
           _showAutoUpdateDialog(info);
         }
@@ -165,11 +165,13 @@ class _LoggedScreenState extends State<LoggedScreen> {
               onPressed: () async {
                 final url = Uri.parse(info.downloadUrl);
                 try {
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
                 } catch (e) {
                   debugPrint('Could not launch download url: $e');
+                  // Fallback launch
+                  try {
+                    await launchUrl(url, mode: LaunchMode.platformDefault);
+                  } catch (_) {}
                 }
               },
               icon: const Icon(Icons.download_rounded, size: 18),
