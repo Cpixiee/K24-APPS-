@@ -29,13 +29,13 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
   final ImagePicker _picker = ImagePicker();
   late OrderModel _currentOrder;
   bool _isLoading = false;
+  String _driverName = 'Driver K-24';
   
   // Map parameters
   final MapController _mapController = MapController();
   List<LatLng> _routePoints = [];
   bool _loadingRoute = false;
   List<OrderModel> _allActiveOrders = [];
-  String _driverName = 'Driver K-24';
 
   @override
   void initState() {
@@ -51,7 +51,9 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       if (mounted) {
         setState(() {
           _allActiveOrders = dashboard.activeOrders;
-          _driverName = dashboard.driver.name.isNotEmpty ? dashboard.driver.name : 'Driver K-24';
+          if (dashboard.driver.name.isNotEmpty) {
+            _driverName = dashboard.driver.name;
+          }
         });
       }
     } catch (_) {}
@@ -1141,6 +1143,172 @@ Catatan: $noteText''';
     );
   }
 
+  Widget _buildActionButton() {
+    if (_currentOrder.status == 'READY_FOR_PICKUP_FACTURE' || _currentOrder.status == 'COMPLETED') {
+      final nextStop = _nextUncompletedStop;
+      if (nextStop != null) {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryGreen,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () {
+            setState(() {
+              _currentOrder = nextStop;
+              _routePoints = [];
+            });
+            _fetchRoute();
+            _refreshOrderDetails();
+          },
+          icon: const Icon(Icons.navigation_rounded),
+          label: Text(
+            'Lanjutkan Titik (Lanjut ke ${nextStop.customerName.isNotEmpty ? nextStop.customerName : (nextStop.pharmacyName.isNotEmpty ? nextStop.pharmacyName : 'Titik Berikutnya')})',
+            style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      } else {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.secondaryBlue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () async {
+            final res = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VerifikasiPODPage(
+                  order: _currentOrder,
+                ),
+              ),
+            );
+            if (res == true && mounted) {
+              await _refreshOrderDetails();
+              Navigator.pop(context, true);
+            }
+          },
+          icon: const Icon(Icons.assignment_returned_rounded),
+          label: const Text('Verifikasi Pengembalian POD', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      }
+    }
+
+    if (_currentOrder.status == 'WAITING_FOR_PICKUP') {
+      return ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryGreen,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+        ),
+        onPressed: _showPickupModal,
+        icon: const Icon(Icons.camera_alt_outlined),
+        label: const Text('Upload Bukti Pickup', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+      );
+    } else if (_currentOrder.status == 'PENDING' && _currentOrder.unboxingOption == 'WAITING_FOR_UNBOXING') {
+      // Unboxing ditunda: tampilkan tombol lanjut ke titik berikutnya, atau kembali jika ini titik terakhir
+      final nextDelayStop = _nextUncompletedStop;
+      if (nextDelayStop != null) {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFF59E0B),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () {
+            setState(() {
+              _currentOrder = nextDelayStop;
+              _routePoints = [];
+            });
+            _fetchRoute();
+            _refreshOrderDetails();
+          },
+          icon: const Icon(Icons.skip_next_rounded),
+          label: Text(
+            'Lanjutkan ke ${nextDelayStop.customerName.isNotEmpty ? nextDelayStop.customerName : (nextDelayStop.pharmacyName.isNotEmpty ? nextDelayStop.pharmacyName : 'Titik Berikutnya')}',
+            style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      } else {
+        // Titik terakhir & unboxing ditunda → kembali ke daftar pesanan
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6B7280),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      }
+    } else if (_currentOrder.status == 'DELIVERING' || _currentOrder.status == 'PENDING') {
+      if (_currentOrder.arrivedPhotoUrl.isEmpty) {
+        return ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.secondaryBlue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: _showArrivedAtLocationModal,
+          icon: const Icon(Icons.location_on_rounded),
+          label: const Text('📍 Sudah Tiba di Lokasi', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+        );
+      } else {
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD1FAE5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF10B981)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
+                  SizedBox(width: 6),
+                  Text('Driver Sudah Tiba di Lokasi Apotek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins')),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              onPressed: _showUnboxingOptionDialog,
+              icon: const Icon(Icons.assignment_turned_in_rounded),
+              label: const Text('📋 Verifikasi Invoice / Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
+          ],
+        );
+      }
+    }
+    return const SizedBox.shrink();
+  }
+
   void _showArrivedAtLocationModal() {
     final noteController = TextEditingController();
     String? arrivedPhotoBase64;
@@ -1222,7 +1390,7 @@ Catatan: $noteText''';
                           onTap: () => setModalState(() => arrivedPhotoBase64 = null),
                           child: Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.64), shape: BoxShape.circle),
                             child: const Icon(Icons.close, color: Colors.white, size: 16),
                           ),
                         ),
@@ -1258,10 +1426,19 @@ Catatan: $noteText''';
                       );
                       if (mounted) {
                         Navigator.pop(context);
+                        setState(() {
+                          _currentOrder = _currentOrder.copyWith(
+                            arrivedPhotoUrl: arrivedPhotoBase64!,
+                            arrivedNote: noteController.text,
+                          );
+                        });
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('✅ Bukti Tiba di Lokasi Berhasil Disimpan'), backgroundColor: AppColors.primaryGreen),
                         );
                         await _refreshOrderDetails();
+                        if (mounted) {
+                          _showUnboxingOptionDialog();
+                        }
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1281,110 +1458,6 @@ Catatan: $noteText''';
         );
       },
     );
-  }
-
-  Widget _buildActionButtons() {
-    if (_currentOrder.status == 'WAITING_FOR_PICKUP') {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryGreen,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 0,
-        ),
-        onPressed: _showPickupModal,
-        icon: const Icon(Icons.qr_code_scanner_rounded),
-        label: const Text('Upload Bukti Pickup', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-      );
-    } else if (_currentOrder.status == 'READY_FOR_PICKUP_FACTURE') {
-      final nextStop = _nextUncompletedStop;
-      if (nextStop != null) {
-        final targetName = nextStop.customerName.isNotEmpty ? nextStop.customerName : nextStop.pharmacyName;
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.secondaryBlue,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DetailPesananPage(order: nextStop),
-              ),
-            );
-          },
-          icon: const Icon(Icons.arrow_forward_rounded),
-          label: Text('Lanjut Pengantaran Ke ($targetName)', style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-        );
-      } else {
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryGreen,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: const Text('Kembali ke Daftar Pesanan', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-        );
-      }
-    } else if (_currentOrder.status == 'DELIVERING' || _currentOrder.status == 'PENDING') {
-      if (_currentOrder.arrivedPhotoUrl.isEmpty) {
-        return ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.secondaryBlue,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-          onPressed: _showArrivedAtLocationModal,
-          icon: const Icon(Icons.location_on_rounded),
-          label: const Text('📍 Sudah Tiba di Lokasi', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-        );
-      } else {
-        return Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFD1FAE5),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF10B981)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
-                  SizedBox(width: 6),
-                  Text('Driver Sudah Tiba di Lokasi Apotek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins')),
-                ],
-              ),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-              onPressed: _showUnboxingOptionDialog,
-              icon: const Icon(Icons.assignment_turned_in_rounded),
-              label: const Text('📋 Verifikasi Invoice / Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-            ),
-          ],
-        );
-      }
-    }
-    return const SizedBox.shrink();
   }
 
   @override
@@ -1847,7 +1920,7 @@ Catatan: $noteText''';
                   ],
                 ),
                 child: SafeArea(
-                  child: _buildActionButtons(),
+                  child: _buildActionButton(),
                 ),
               )
             : null,

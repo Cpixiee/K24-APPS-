@@ -6,32 +6,6 @@ import 'package:apps_k24/models/dashboard_data.dart';
 import 'package:apps_k24/services/http_debug_logger.dart';
 
 
-class AppVersionInfo {
-  final String latestVersion;
-  final int versionCode;
-  final String downloadUrl;
-  final bool forceUpdate;
-  final String releaseNotes;
-
-  AppVersionInfo({
-    required this.latestVersion,
-    required this.versionCode,
-    required this.downloadUrl,
-    required this.forceUpdate,
-    required this.releaseNotes,
-  });
-
-  factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
-    return AppVersionInfo(
-      latestVersion: json['latest_version'] as String? ?? '1.0.0',
-      versionCode: json['version_code'] as int? ?? 1,
-      downloadUrl: json['download_url'] as String? ?? 'http://103.236.140.19:9002/downloads/k24-driver-latest.apk',
-      forceUpdate: json['force_update'] as bool? ?? false,
-      releaseNotes: json['release_notes'] as String? ?? '',
-    );
-  }
-}
-
 class ApiService {
   static String? _customBaseUrl;
   static String? _serverLanIp;
@@ -40,19 +14,6 @@ class ApiService {
   static const int _serverPort = 9001;
 
   static String? get serverLanIp => _serverLanIp;
-
-  static Future<AppVersionInfo?> checkAppVersion() async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/app-version')).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return AppVersionInfo.fromJson(data);
-      }
-    } catch (e) {
-      debugPrint('[AppVersion] Error checking app version: $e');
-    }
-    return null;
-  }
 
   // Initialize the API Service, loading custom base URL if saved
   static Future<void> init() async {

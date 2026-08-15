@@ -101,7 +101,10 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 	       COALESCE(o.checked_invoices, '') as checked_invoices,
 	       COALESCE(o.facture_photo_url, '') as facture_photo_url,
 	       COALESCE(o.pickup_photo_url, '') as pickup_photo_url,
-	       COALESCE(o.signature_photo_url, '') as signature_photo_url
+	       COALESCE(o.signature_photo_url, '') as signature_photo_url,
+	       COALESCE(o.arrived_photo_url, '') as arrived_photo_url,
+	       COALESCE(o.arrived_note, '') as arrived_note,
+	       COALESCE(o.handover_photo_url, '') as handover_photo_url
 	FROM orders o
 	LEFT JOIN dispatch_id_detail d ON o.id = d.order_id
 	LEFT JOIN mitra_profiles mp ON o.mitra_id = mp.user_id
@@ -146,6 +149,9 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 				&o.FacturePhotoUrl,
 				&o.PickupPhotoUrl,
 				&o.SignaturePhotoUrl,
+				&o.ArrivedPhotoUrl,
+				&o.ArrivedNote,
+				&o.HandoverPhotoUrl,
 			)
 			if errScan == nil {
 				data.ActiveOrders = append(data.ActiveOrders, o)

@@ -12,7 +12,6 @@ import 'package:apps_k24/pages/notifications_page.dart';
 import 'package:apps_k24/pages/track_live_page.dart';
 import 'package:apps_k24/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class LoggedScreen extends StatefulWidget {
   const LoggedScreen({super.key});
@@ -64,9 +63,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
     // Register background worker task
     NotificationService.registerBackgroundTask();
     
-    // Initial notifications check & auto-update version check
+    // Initial notifications check
     _checkNotifications();
-    _checkAppVersionAutoUpdate();
 
     // Setup periodic polling for new notifications every 15 seconds
     _notificationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
@@ -77,110 +75,6 @@ class _LoggedScreenState extends State<LoggedScreen> {
     _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       _sendDriverLocationUpdate();
     });
-  }
-
-  Future<void> _checkAppVersionAutoUpdate() async {
-    try {
-      final info = await ApiService.checkAppVersion();
-      if (info != null && mounted) {
-        // Current App Version Code is 2 for v1.0.2 release
-        const currentVersionCode = 2;
-        if (info.versionCode > currentVersionCode) {
-          _showAutoUpdateDialog(info);
-        }
-      }
-    } catch (e) {
-      debugPrint('[AutoUpdate] Error checking app version: $e');
-    }
-  }
-
-  void _showAutoUpdateDialog(AppVersionInfo info) {
-    showDialog(
-      context: context,
-      barrierDismissible: !info.forceUpdate,
-      builder: (context) => PopScope(
-        canPop: !info.forceUpdate,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: const [
-              Icon(Icons.system_update_rounded, color: AppColors.primaryGreen, size: 28),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Update Aplikasi Tersedia',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Versi Terbaru: v${info.latestVersion}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryGreen, fontFamily: 'Poppins'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Pembaruan penting tersedia untuk meningkatkan performa & fitur pengiriman.',
-                style: TextStyle(fontSize: 12, fontFamily: 'Poppins', color: AppColors.darkGrey),
-              ),
-              if (info.releaseNotes.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    info.releaseNotes,
-                    style: TextStyle(fontSize: 11, fontFamily: 'Poppins', color: AppColors.darkGrey),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            if (!info.forceUpdate)
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Nanti', style: TextStyle(fontFamily: 'Poppins', color: Colors.grey)),
-              ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                final url = Uri.parse(info.downloadUrl);
-                try {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                } catch (e) {
-                  debugPrint('Could not launch download url: $e');
-                  // Fallback launch
-                  try {
-                    await launchUrl(url, mode: LaunchMode.platformDefault);
-                  } catch (_) {}
-                }
-              },
-              icon: const Icon(Icons.download_rounded, size: 18),
-              label: const Text('Update Sekarang', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
