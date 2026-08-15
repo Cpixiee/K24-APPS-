@@ -342,11 +342,8 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
 
         {/* ─── APK Download & Logout ─── */}
         <div className="p-2 border-t border-sidebar-border shrink-0 space-y-1">
-          <a
-            href="/downloads/k24-driver-latest.apk"
-            download="k24-driver-latest.apk"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/download"
             title={isCollapsed ? 'Download APK Driver' : undefined}
             className={cn(
               'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-950/50 transition-colors',
@@ -355,7 +352,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
           >
             <Download className="h-4 w-4 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
             {!isCollapsed && <span>Download APK Driver</span>}
-          </a>
+          </Link>
           <button
             onClick={handleLogout}
             title={isCollapsed ? 'Keluar Sesi' : undefined}
