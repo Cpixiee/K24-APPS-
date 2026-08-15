@@ -12,6 +12,8 @@ import 'package:apps_k24/theme/gaps.dart';
 import 'package:apps_k24/services/api_service.dart';
 import 'package:apps_k24/models/dashboard_data.dart';
 import 'package:apps_k24/pages/verifikasi_invoice_page.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:apps_k24/pages/verifikasi_pod_page.dart';
 import 'package:apps_k24/utils/watermark_helper.dart';
 
@@ -303,10 +305,9 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
   }
 
   Future<void> _sendWhatsAppPickupReport({
-    required String pickupPhotoUrl,
+    required String pickupPhotoBase64,
     required String pickupNote,
   }) async {
-    const waNumber = '6287877807780';
     final now = DateTime.now();
     final dateStr = '${now.day}/${now.month}/${now.year}';
     final pickupTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
@@ -320,11 +321,35 @@ Tanggal: $dateStr
 Jam pickup: $pickupTimeStr
 Nama driver: $driverName
 Jumlah alamat: $totalStops Apotek
-Catatan: $noteText
-——————————————————————
-📷 BUKTI FOTO PICKUP:
-$pickupPhotoUrl''';
+Catatan: $noteText''';
 
+    // 1. First, attempt to share the Watermarked Pickup Photo as media attachment with caption via Share.shareXFiles
+    try {
+      if (pickupPhotoBase64.isNotEmpty) {
+        final cleanBase64 = pickupPhotoBase64.contains(',')
+            ? pickupPhotoBase64.split(',')[1]
+            : pickupPhotoBase64;
+        final bytes = base64Decode(cleanBase64);
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/bukti_pickup_gudang.jpg');
+        await tempFile.writeAsBytes(bytes);
+
+        if (await tempFile.exists()) {
+          final xFile = XFile(tempFile.path);
+          await Share.shareXFiles(
+            [xFile],
+            text: message,
+            subject: 'K24 JAKARTA LAPORAN PICKUP GUDANG',
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('[WA Pickup Share] Could not share pickup image file: $e');
+    }
+
+    // 2. Fallback to direct url_launcher wa.me link
+    const waNumber = '6287877807780';
     final encodedMessage = Uri.encodeComponent(message);
     final waUrl = Uri.parse('https://wa.me/$waNumber?text=$encodedMessage');
 
@@ -517,7 +542,7 @@ $pickupPhotoUrl''';
                       if (mounted) {
                         Navigator.pop(context);
                         await _sendWhatsAppPickupReport(
-                          pickupPhotoUrl: payload,
+                          pickupPhotoBase64: photos.first,
                           pickupNote: noteController.text,
                         );
                         await _refreshOrderDetails();
