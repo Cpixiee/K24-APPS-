@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   BarChart3, Truck, Store, ShoppingBag, FileText,
-  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell, CheckCircle2, ShieldAlert
+  LogOut, Compass, Package, ChevronLeft, ChevronRight, X, Bell, CheckCircle2, ShieldAlert, Download
 } from 'lucide-react'
 
 interface SubNavItem {
@@ -340,8 +340,22 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, mobileOpen, setMo
           })}
         </nav>
 
-        {/* ─── Logout ─── */}
-        <div className="p-2 border-t border-sidebar-border shrink-0">
+        {/* ─── APK Download & Logout ─── */}
+        <div className="p-2 border-t border-sidebar-border shrink-0 space-y-1">
+          <a
+            href="/downloads/k24-driver-latest.apk"
+            download="k24-driver-latest.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            title={isCollapsed ? 'Download APK Driver' : undefined}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-950/50 transition-colors',
+              isCollapsed && 'justify-center px-0'
+            )}
+          >
+            <Download className="h-4 w-4 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+            {!isCollapsed && <span>Download APK Driver</span>}
+          </a>
           <button
             onClick={handleLogout}
             title={isCollapsed ? 'Keluar Sesi' : undefined}
