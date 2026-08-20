@@ -6,30 +6,29 @@ import { apiClient } from '@/lib/api'
 import DashboardShell from '@/components/layout/DashboardShell'
 import {
   Search, FileText, CheckCircle2, Clock, Truck, MapPin, X,
-  ExternalLink, Building2, User, Phone, Calendar, Eye, ZoomIn,
-  ShieldCheck, AlertCircle, AlertTriangle, ChevronRight, Filter, RefreshCw
+  Building2, Eye, ZoomIn, ShieldCheck, AlertCircle, Filter, RefreshCw
 } from 'lucide-react'
 
 interface InvoiceItem {
-  parent_order_number: string
-  order_number: string
-  medicine_summary: string
-  checked_invoices: string
-  delivery_address: string
-  driver_name: string
-  driver_phone: string
-  driver_plate: string
-  vehicle_type: string
-  created_at: string
-  status: string
-  dispatch_id: string
-  customer_name: string
+  parent_order_number?: string
+  order_number?: string
+  medicine_summary?: string
+  checked_invoices?: string
+  delivery_address?: string
+  driver_name?: string
+  driver_phone?: string
+  driver_plate?: string
+  vehicle_type?: string
+  created_at?: string
+  status?: string
+  dispatch_id?: string
+  customer_name?: string
   pharmacy_name?: string
-  reject_reason: string
-  reject_note: string
-  extra_items_note: string
-  unboxing_option: string
-  pickup_note: string
+  reject_reason?: string
+  reject_note?: string
+  extra_items_note?: string
+  unboxing_option?: string
+  pickup_note?: string
   arrived_photo_url?: string
   facture_photo_url?: string
   signature_photo_url?: string
@@ -51,11 +50,15 @@ export default function CekInvoicePage() {
     setLoading(true)
     try {
       const res = await apiClient.get('/admin/orders/invoices-flat')
-      if (res.data && res.data.data && Array.isArray(res.data.data)) {
-        setInvoices(res.data.data)
+      const rawData = res.data?.data ?? res.data
+      if (Array.isArray(rawData)) {
+        setInvoices(rawData)
+      } else {
+        setInvoices([])
       }
     } catch (e) {
       console.error('Failed fetching flat invoices:', e)
+      setInvoices([])
     } finally {
       setLoading(false)
     }
@@ -65,10 +68,10 @@ export default function CekInvoicePage() {
     fetchInvoices()
   }, [])
 
-  // Safely format all types of photo URLs (Data URI, raw Base64 starting with /9j/ or iVBOR, or HTTP/uploads path)
+  // Safely format all types of photo URLs
   const formatFullPhotoUrl = (url?: string): string => {
     if (!url) return ''
-    const str = url.trim()
+    const str = String(url).trim()
     if (!str) return ''
 
     if (str.startsWith('data:image/') || str.startsWith('data:')) {
@@ -92,34 +95,47 @@ export default function CekInvoicePage() {
     return `/api/uploads/${str.replace(/^\//, '')}`
   }
 
-  // Filter invoices by search query & status
+  // Filter invoices safely with null checks
   const filteredInvoices = useMemo(() => {
     return invoices.filter((item) => {
+      const status = item.status || ''
+      const unboxingOpt = item.unboxing_option || ''
+
       // Status filter
       if (selectedStatus === 'VERIFIED') {
-        const isVerified = item.status === 'READY_FOR_PICKUP_FACTURE' || item.status === 'COMPLETED' || item.unboxing_option === 'UNBOXING'
+        const isVerified = status === 'READY_FOR_PICKUP_FACTURE' || status === 'COMPLETED' || unboxingOpt === 'UNBOXING'
         if (!isVerified) return false
       } else if (selectedStatus === 'WAITING') {
-        const isWaiting = item.unboxing_option === 'WAITING_FOR_UNBOXING' || item.status === 'PENDING'
+        const isWaiting = unboxingOpt === 'WAITING_FOR_UNBOXING' || status === 'PENDING'
         if (!isWaiting) return false
       } else if (selectedStatus === 'DELIVERING') {
-        const isDelivering = item.status === 'DELIVERING' || item.status === 'PICKING_UP' || item.status === 'ASSIGNED'
+        const isDelivering = status === 'DELIVERING' || status === 'PICKING_UP' || status === 'ASSIGNED'
         if (!isDelivering) return false
       }
 
       // Search query filter
       if (!searchQuery.trim()) return true
       const q = searchQuery.toLowerCase().trim()
+      const orderNo = (item.order_number || '').toLowerCase()
+      const parentOrderNo = (item.parent_order_number || '').toLowerCase()
+      const dispatchId = (item.dispatch_id || '').toLowerCase()
+      const custName = (item.customer_name || '').toLowerCase()
+      const pharmName = (item.pharmacy_name || '').toLowerCase()
+      const delivAddr = (item.delivery_address || '').toLowerCase()
+      const driverName = (item.driver_name || '').toLowerCase()
+      const checkedInv = (item.checked_invoices || '').toLowerCase()
+      const medSummary = (item.medicine_summary || '').toLowerCase()
+
       return (
-        item.order_number.toLowerCase().includes(q) ||
-        item.parent_order_number.toLowerCase().includes(q) ||
-        item.dispatch_id.toLowerCase().includes(q) ||
-        item.customer_name.toLowerCase().includes(q) ||
-        (item.pharmacy_name && item.pharmacy_name.toLowerCase().includes(q)) ||
-        item.delivery_address.toLowerCase().includes(q) ||
-        item.driver_name.toLowerCase().includes(q) ||
-        item.checked_invoices.toLowerCase().includes(q) ||
-        item.medicine_summary.toLowerCase().includes(q)
+        orderNo.includes(q) ||
+        parentOrderNo.includes(q) ||
+        dispatchId.includes(q) ||
+        custName.includes(q) ||
+        pharmName.includes(q) ||
+        delivAddr.includes(q) ||
+        driverName.includes(q) ||
+        checkedInv.includes(q) ||
+        medSummary.includes(q)
       )
     })
   }, [invoices, searchQuery, selectedStatus])
@@ -132,9 +148,11 @@ export default function CekInvoicePage() {
     let delivering = 0
 
     invoices.forEach((o) => {
-      if (o.status === 'READY_FOR_PICKUP_FACTURE' || o.status === 'COMPLETED' || o.unboxing_option === 'UNBOXING') {
+      const status = o.status || ''
+      const unboxingOpt = o.unboxing_option || ''
+      if (status === 'READY_FOR_PICKUP_FACTURE' || status === 'COMPLETED' || unboxingOpt === 'UNBOXING') {
         verified++
-      } else if (o.unboxing_option === 'WAITING_FOR_UNBOXING') {
+      } else if (unboxingOpt === 'WAITING_FOR_UNBOXING') {
         delayed++
       } else {
         delivering++
@@ -145,21 +163,24 @@ export default function CekInvoicePage() {
   }, [invoices])
 
   const getStatusBadge = (item: InvoiceItem) => {
-    if (item.status === 'COMPLETED') {
+    const status = item.status || ''
+    const unboxingOpt = item.unboxing_option || ''
+
+    if (status === 'COMPLETED') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
           <CheckCircle2 className="w-3.5 h-3.5" /> SELESAI (POD COMPLETE)
         </span>
       )
     }
-    if (item.status === 'READY_FOR_PICKUP_FACTURE' || item.unboxing_option === 'UNBOXING') {
+    if (status === 'READY_FOR_PICKUP_FACTURE' || unboxingOpt === 'UNBOXING') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-300">
           <ShieldCheck className="w-3.5 h-3.5" /> INVOICE TERVERIFIKASI
         </span>
       )
     }
-    if (item.unboxing_option === 'WAITING_FOR_UNBOXING') {
+    if (unboxingOpt === 'WAITING_FOR_UNBOXING') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
           <Clock className="w-3.5 h-3.5" /> TUNDA UNBOXING
@@ -173,21 +194,22 @@ export default function CekInvoicePage() {
     )
   }
 
-  // Extract all photo URLs from an invoice item
+  // Extract all photo URLs safely
   const getItemPhotos = (item: InvoiceItem) => {
     const photos: { title: string; url: string }[] = []
     
     // Facture Photos
     if (item.facture_photo_url) {
+      const rawUrl = String(item.facture_photo_url)
       let urls: string[] = []
-      if (item.facture_photo_url.includes('|||')) {
-        urls = item.facture_photo_url.split('|||')
-      } else if (item.facture_photo_url.includes(';')) {
-        urls = item.facture_photo_url.split(';')
+      if (rawUrl.includes('|||')) {
+        urls = rawUrl.split('|||')
+      } else if (rawUrl.includes(';')) {
+        urls = rawUrl.split(';')
       } else {
-        urls = [item.facture_photo_url]
+        urls = [rawUrl]
       }
-      urls.filter(u => u.trim()).forEach((u, idx) => {
+      urls.filter(u => u && u.trim()).forEach((u, idx) => {
         photos.push({
           title: urls.length > 1 ? `Foto Faktur Fisik #${idx + 1}` : 'Foto Faktur Fisik',
           url: formatFullPhotoUrl(u)
@@ -355,11 +377,15 @@ export default function CekInvoicePage() {
             <div className="grid grid-cols-1 gap-4">
               {filteredInvoices.map((item, index) => {
                 const photos = getItemPhotos(item)
-                const invListText = item.checked_invoices.trim() || item.medicine_summary.trim()
+                const checkedText = (item.checked_invoices || '').trim()
+                const summaryText = (item.medicine_summary || '').trim()
+                const invListText = checkedText || summaryText
+                const orderNum = item.order_number || item.parent_order_number || `ORDER-${index + 1}`
+                const dateStr = item.created_at ? new Date(item.created_at).toLocaleString('id-ID') : '-'
 
                 return (
                   <div
-                    key={`${item.order_number}-${index}`}
+                    key={`${orderNum}-${index}`}
                     className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-500/50 shadow-sm hover:shadow-md transition-all p-5 space-y-4"
                   >
                     {/* Card Header Row */}
@@ -371,7 +397,7 @@ export default function CekInvoicePage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="font-extrabold text-slate-800 text-base">
-                              {item.order_number}
+                              {orderNum}
                             </h3>
                             {item.dispatch_id && (
                               <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
@@ -380,7 +406,7 @@ export default function CekInvoicePage() {
                             )}
                           </div>
                           <p className="text-xs text-slate-400 font-medium">
-                            Dibuat pada: {new Date(item.created_at).toLocaleString('id-ID')}
+                            Dibuat pada: {dateStr}
                           </p>
                         </div>
                       </div>
@@ -401,7 +427,7 @@ export default function CekInvoicePage() {
                         </p>
                         <p className="text-slate-500 flex items-start gap-1">
                           <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                          <span>{item.delivery_address}</span>
+                          <span>{item.delivery_address || '-'}</span>
                         </p>
                       </div>
 
@@ -494,12 +520,12 @@ export default function CekInvoicePage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-extrabold text-slate-800">
-                      Detail Invoice {selectedInvoice.order_number}
+                      Detail Invoice {selectedInvoice.order_number || selectedInvoice.parent_order_number}
                     </h2>
                     {getStatusBadge(selectedInvoice)}
                   </div>
                   <p className="text-xs text-slate-500">
-                    Batch Dispatch: {selectedInvoice.dispatch_id || selectedInvoice.parent_order_number}
+                    Batch Dispatch: {selectedInvoice.dispatch_id || selectedInvoice.parent_order_number || '-'}
                   </p>
                 </div>
                 <button
@@ -518,9 +544,9 @@ export default function CekInvoicePage() {
                     <span>Lokasi Apotek / Alamat Tujuan</span>
                   </p>
                   <p className="font-extrabold text-slate-800 text-sm">
-                    {selectedInvoice.customer_name || selectedInvoice.pharmacy_name}
+                    {selectedInvoice.customer_name || selectedInvoice.pharmacy_name || 'Pelanggan K-24'}
                   </p>
-                  <p className="text-slate-600 leading-relaxed">{selectedInvoice.delivery_address}</p>
+                  <p className="text-slate-600 leading-relaxed">{selectedInvoice.delivery_address || '-'}</p>
                 </div>
 
                 <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-1.5">
@@ -530,7 +556,7 @@ export default function CekInvoicePage() {
                   </p>
                   <p className="font-extrabold text-slate-800 text-sm">{selectedInvoice.driver_name || 'Driver'}</p>
                   <p className="text-slate-600">No. HP: {selectedInvoice.driver_phone || '-'}</p>
-                  <p className="text-slate-600">Armada / Nopol: {selectedInvoice.driver_plate || '-'} ({selectedInvoice.vehicle_type})</p>
+                  <p className="text-slate-600">Armada / Nopol: {selectedInvoice.driver_plate || '-'} ({selectedInvoice.vehicle_type || 'motor'})</p>
                 </div>
               </div>
 
