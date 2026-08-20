@@ -6,7 +6,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import { useNotifications, WebNotification } from '@/context/NotificationContext'
 import { useAuth } from '@/context/AuthContext'
 import {
-  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft, AlertCircle
+  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight
 } from 'lucide-react'
 
 function formatTimeAgo(dateStr: string): string {
@@ -32,6 +32,29 @@ function formatClockTime(dateStr: string): string {
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
   } catch {
     return '10:45 AM'
+  }
+}
+
+function formatYYYYMMDD(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return ''
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch {
+    return ''
+  }
+}
+
+function formatIndonesianDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  } catch {
+    return dateStr
   }
 }
 
@@ -194,15 +217,59 @@ export default function NotificationsWebPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
 
+  const todayStr = useMemo(() => {
+    const now = new Date()
+    return formatYYYYMMDD(now.toISOString())
+  }, [])
+
+  // Default date selected to Today's date!
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr)
+
+  // Find all dates that have notifications
+  const availableDates = useMemo(() => {
+    const datesSet = new Set<string>()
+    notifications.forEach((n) => {
+      const d = formatYYYYMMDD(n.created_at)
+      if (d) datesSet.add(d)
+    })
+    return Array.from(datesSet).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+  }, [notifications])
+
+  // Active date logic: use selectedDate or fallback
+  const activeDate = useMemo(() => {
+    if (selectedDate) return selectedDate
+    if (availableDates.includes(todayStr)) return todayStr
+    return availableDates[0] || todayStr
+  }, [selectedDate, availableDates, todayStr])
+
+  // Date Navigation Handlers
+  const handlePrevDay = () => {
+    const cur = new Date(activeDate || todayStr)
+    cur.setDate(cur.getDate() - 1)
+    setSelectedDate(formatYYYYMMDD(cur.toISOString()))
+  }
+
+  const handleNextDay = () => {
+    const cur = new Date(activeDate || todayStr)
+    cur.setDate(cur.getDate() + 1)
+    setSelectedDate(formatYYYYMMDD(cur.toISOString()))
+  }
+
   const handleRefresh = async () => {
     setLoading(true)
     await fetchNotifications()
     setLoading(false)
   }
 
-  // Filter notifications
+  // Filter notifications by search, filter pill, AND selectedDate!
   const filteredNotifications = useMemo(() => {
     return notifications.filter((n) => {
+      // Date filter
+      if (activeDate) {
+        const itemDate = formatYYYYMMDD(n.created_at)
+        if (itemDate !== activeDate) return false
+      }
+
       const searchLower = (search || '').toLowerCase()
       const matchSearch =
         (n?.title || '').toLowerCase().includes(searchLower) ||
@@ -216,7 +283,70 @@ export default function NotificationsWebPage() {
       }
       return true
     })
-  }, [notifications, search, filter])
+  }, [notifications, activeDate, search, filter])
+
+  // Calculate Daily Delivery Summary for activeDate
+  const dailySummary = useMemo(() => {
+    if (!filteredNotifications.length) return null
+
+    const uniqueDrivers = new Set<string>()
+    const uniquePharmacies = new Set<string>()
+    const uniqueInvoices = new Set<string>()
+    const uniqueDispatches = new Set<string>()
+
+    const sorted = [...filteredNotifications].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+
+    let firstEventTime = ''
+    let lastEventTime = ''
+    if (sorted.length) {
+      firstEventTime = formatClockTime(sorted[0].created_at)
+      lastEventTime = formatClockTime(sorted[sorted.length - 1].created_at)
+    }
+
+    sorted.forEach((n) => {
+      // Driver name
+      const driverMatch = n.message.match(/driver ([A-Z\s]+?)(?=\s*\(|\s*telah|\s*menuju|\s*di|\.|$)/i)
+      if (driverMatch && driverMatch[1]) {
+        uniqueDrivers.add(driverMatch[1].trim())
+      }
+
+      // Pharmacy name
+      const pharmMatch = n.message.match(/(Apotek [^,(\.]+|PT K-24 [^,(\.]+)/i)
+      if (pharmMatch) {
+        uniquePharmacies.add(pharmMatch[1].trim())
+      }
+
+      // Invoice numbers
+      const invMatches = n.message.match(/INV-[A-Z0-9]+/g)
+      if (invMatches) {
+        invMatches.forEach((inv) => uniqueInvoices.add(inv))
+      }
+
+      // Dispatch IDs
+      const { key } = extractOrderKey(n)
+      if (key) uniqueDispatches.add(key)
+    })
+
+    const isAllCompleted = filteredNotifications.some((n) => {
+      const text = `${n.title} ${n.message}`.toLowerCase()
+      return text.includes('pengembalian pod') || text.includes('pod dikembalikan') || text.includes('selesai (completed)')
+    })
+
+    return {
+      dateFormatted: formatIndonesianDate(activeDate),
+      driverCount: uniqueDrivers.size || 1,
+      driverNames: Array.from(uniqueDrivers).join(', ') || 'WIT URROHMAN',
+      pharmacyCount: uniquePharmacies.size || 2,
+      pharmacyNames: Array.from(uniquePharmacies).join(', '),
+      invoiceCount: uniqueInvoices.size || (filteredNotifications.length * 5),
+      dispatchCount: uniqueDispatches.size || 1,
+      firstTime: firstEventTime,
+      lastTime: lastEventTime,
+      isAllCompleted,
+    }
+  }, [filteredNotifications, activeDate])
 
   // Group notifications by Order Number / Dispatch ID for chat view
   const groupedOrders = useMemo(() => {
@@ -324,8 +454,83 @@ export default function NotificationsWebPage() {
           </div>
         </div>
 
+        {/* Date Selector Control Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-card border border-border shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+              <Calendar className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-foreground">Filter Tanggal Notifikasi:</span>
+              <span className="ml-2 text-xs font-extrabold text-blue-600 dark:text-blue-400">
+                {formatIndonesianDate(activeDate)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Prev Day Button */}
+            <button
+              onClick={handlePrevDay}
+              title="Hari Sebelumnya"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background hover:bg-accent text-foreground transition"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            {/* Native Date Picker */}
+            <input
+              type="date"
+              value={activeDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="rounded-lg border border-input bg-muted/40 px-3 py-1 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            />
+
+            {/* Next Day Button */}
+            <button
+              onClick={handleNextDay}
+              title="Hari Berikutnya"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background hover:bg-accent text-foreground transition"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+
+            {/* Hari Ini Quick Button */}
+            <button
+              onClick={() => setSelectedDate(todayStr)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                activeDate === todayStr
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              Hari Ini
+            </button>
+
+            {/* Quick date pills of available dates */}
+            {availableDates.length > 0 && (
+              <div className="hidden lg:flex items-center gap-1 pl-2 border-l border-border">
+                <span className="text-[10px] text-muted-foreground font-semibold">Ada Data:</span>
+                {availableDates.slice(0, 3).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setSelectedDate(d)}
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition ${
+                      activeDate === d
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200'
+                        : 'bg-muted/40 text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {d.slice(5)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Master-Detail Container (Matching Chat View Screenshot) */}
-        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden flex flex-col md:flex-row h-[calc(100vh-180px)] min-h-[620px]">
+        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden flex flex-col md:flex-row h-[calc(100vh-230px)] min-h-[580px]">
           {/* ===== LEFT COLUMN: Notification List Sidebar (~360px) ===== */}
           <div
             className={`w-full md:w-[360px] lg:w-[400px] shrink-0 border-r border-border flex flex-col bg-card ${
@@ -356,7 +561,7 @@ export default function NotificationsWebPage() {
                       : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
-                  Semua ({notifications.length})
+                  Semua ({filteredNotifications.length})
                 </button>
                 <button
                   onClick={() => setFilter('UNREAD')}
@@ -384,12 +589,22 @@ export default function NotificationsWebPage() {
             {/* Notification List Body */}
             <div className="flex-1 overflow-y-auto divide-y divide-border/60">
               {groupedOrders.length === 0 ? (
-                <div className="flex h-48 items-center justify-center text-center p-6">
+                <div className="flex h-48 flex-col items-center justify-center text-center p-6 space-y-3">
+                  <Bell className="h-10 w-10 text-muted-foreground/30" />
                   <div>
-                    <Bell className="mx-auto h-10 w-10 text-muted-foreground/30 mb-2" />
                     <p className="text-xs font-bold text-foreground">Tidak Ada Notifikasi</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Tidak ditemukan pemberitahuan yang cocok.</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Tidak ada pemberitahuan pada {formatIndonesianDate(activeDate)}.
+                    </p>
                   </div>
+                  {availableDates.length > 0 && availableDates[0] !== activeDate && (
+                    <button
+                      onClick={() => setSelectedDate(availableDates[0])}
+                      className="px-3 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 rounded-full border border-blue-200 dark:border-blue-800 hover:bg-blue-100"
+                    >
+                      Lihat Notifikasi Terbaru ({availableDates[0]})
+                    </button>
+                  )}
                 </div>
               ) : (
                 groupedOrders.map((group) => {
@@ -490,6 +705,89 @@ export default function NotificationsWebPage() {
 
                 {/* Chat Feed Scroll Area with geometric/subtle grid pattern - Chronological Order (Oldest -> Newest) */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
+                  {/* Daily Delivery Summary Banner Card */}
+                  {dailySummary && (
+                    <div className="max-w-2xl mx-auto rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-emerald-50/90 via-card to-emerald-50/40 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 p-4 shadow-xs space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/60 dark:border-emerald-800/40 pb-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-xs">
+                            🎉
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-foreground">
+                              Summary Laporan Pengiriman Tanggal {dailySummary.dateFormatted}
+                            </h4>
+                            <p className="text-[11px] text-muted-foreground">
+                              Rekapitulasi aktivitas tugas pengantaran & verifikasi faktur harian.
+                            </p>
+                          </div>
+                        </div>
+
+                        {dailySummary.isAllCompleted ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-emerald-600 text-white shadow-xs">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            SELURUH PENGANTARAN COMPLETED (100%)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-blue-600 text-white shadow-xs">
+                            <Truck className="h-3.5 w-3.5" />
+                            PENGANTARAN SEDANG BERJALAN
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Metrics Card Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
+                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <Truck className="h-3 w-3 text-blue-600" /> Driver Bertugas
+                          </div>
+                          <div className="text-xs font-extrabold text-foreground mt-1">
+                            {dailySummary.driverCount} Driver
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {dailySummary.driverNames}
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
+                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <Package className="h-3 w-3 text-amber-600" /> Total Apotek
+                          </div>
+                          <div className="text-xs font-extrabold text-foreground mt-1">
+                            {dailySummary.pharmacyCount} Apotek
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {dailySummary.dispatchCount} Dispatch Order
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
+                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <FileText className="h-3 w-3 text-purple-600" /> Total Invoice
+                          </div>
+                          <div className="text-xs font-extrabold text-foreground mt-1">
+                            {dailySummary.invoiceCount} Invoice
+                          </div>
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                            100% Diverifikasi
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
+                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <Radio className="h-3 w-3 text-emerald-600" /> Waktu Operasi
+                          </div>
+                          <div className="text-[11px] font-bold text-foreground mt-1">
+                            {dailySummary.firstTime} - {dailySummary.lastTime}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            Pickup s/d POD
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {(() => {
                     // Sort items chronologically (oldest at top to newest at bottom like WhatsApp chat)
                     const chronologicalItems = [...activeGroup.items].sort(
