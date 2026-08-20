@@ -41,6 +41,8 @@ services:
       DB_NAME: k24
       JWT_SECRET: super_secret_jwt_k24_key_2026
       CORS_ORIGIN: "*"
+    volumes:
+      - uploads_k24_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,4 +74,6 @@ networks:
 
 volumes:
   postgres_k24_data:
+    driver: local
+  uploads_k24_data:
     driver: local

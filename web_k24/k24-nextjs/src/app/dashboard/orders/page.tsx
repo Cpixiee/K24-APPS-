@@ -105,9 +105,33 @@ export default function OrdersPage() {
 
   const formatFullPhotoUrl = (url?: string) => {
     if (!url) return ''
-    if (url.startsWith('http://') || url.startsWith('https://')) return url
-    const hostname = typeof window !== 'undefined' ? window.location.hostname : '103.236.140.19'
-    return `http://${hostname}:9001${url.startsWith('/') ? '' : '/'}${url}`
+    const str = url.trim()
+
+    // 1. Base64 Data URI
+    if (str.startsWith('data:image/') || str.startsWith('data:')) {
+      return str
+    }
+
+    // 2. Raw base64 string (JPEG starts with /9j/ or PNG with iVBORw0KGgo or PHN2Zw)
+    if (str.startsWith('/9j/') || str.startsWith('iVBORw0KGgo') || str.startsWith('PHN2Zw')) {
+      return `data:image/jpeg;base64,${str}`
+    }
+
+    // 3. Path with /uploads/ or /api/uploads/
+    if (str.includes('/uploads/')) {
+      return `/uploads/${str.split('/uploads/')[1]}`
+    }
+    if (str.includes('/api/uploads/')) {
+      return `/uploads/${str.split('/api/uploads/')[1]}`
+    }
+
+    // 4. External HTTP/HTTPS URL
+    if (str.startsWith('http://') || str.startsWith('https://')) {
+      return str
+    }
+
+    // 5. Relative upload path
+    return `/uploads/${str.startsWith('/') ? str.slice(1) : str}`
   }
 
   // Action Dropdown & Delete Modal States
