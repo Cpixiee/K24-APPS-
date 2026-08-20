@@ -10,6 +10,9 @@ import { useNotifications, WebNotification } from '@/context/NotificationContext
 const TAB_TITLES: Record<string, { title: string; sub: string }> = {
   overview:       { title: 'Ringkasan Dashboard',       sub: 'Status, pertumbuhan, dan logistik pengiriman apotek saat ini.' },
   'track-live':   { title: 'Lacak Live & Radar Pengiriman', sub: 'Pantau posisi kurir, peta rute GPS, dan log status order real-time.' },
+  'detail-pengantaran': { title: 'Detail Pengantaran',  sub: 'Pusat pemantauan status pengiriman dan faktur per-alamat.' },
+  'cek-invoice':        { title: 'Cek Invoice & Pengantaran', sub: 'Cari detail invoice, foto faktur, serah terima, dan bukti unboxing apotek.' },
+  catatan:        { title: 'Catatan Khusus',      sub: 'Daftar riwayat dan catatan khusus pengiriman.' },
   notifications:  { title: 'Notifikasi & Laporan System', sub: 'Pusat pemberitahuan tugas pengantaran dan konfirmasi order.' },
   drivers:        { title: 'Manajemen Driver',          sub: 'Pantau armada pengiriman obat dan detail registrasi kurir.' },
   mitra:          { title: 'Mitra',                     sub: 'Daftar dan kelola lokasi outlet apotek mitra franchise K-24.' },

@@ -348,6 +348,80 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
     }
   }
 
+  Future<void> _handleDelayUnboxing() async {
+    final controller = TextEditingController(text: 'Apoteker sedang sibuk, unboxing dilakukan nanti');
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.schedule_rounded, color: Colors.amber),
+            SizedBox(width: 8),
+            Text('Tunda Unboxing', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins', fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Masukkan alasan tunda unboxing (pesanan akan disimpan dengan status unboxing menyusul):',
+              style: TextStyle(fontSize: 12, fontFamily: 'Poppins', height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'Alasan tunda unboxing...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(fontFamily: 'Poppins')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber.shade800,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Simpan & Tunda', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+          ),
+        ],
+      ),
+    );
+
+    if (reason != null && reason.isNotEmpty) {
+      setState(() => _submitting = true);
+      try {
+        await ApiService.waitUnboxOrder(widget.order.id, reason);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Unboxing berhasil ditunda. Pesanan disimpan untuk unboxing susulan.'),
+            backgroundColor: Colors.amber,
+          ),
+        );
+        Navigator.pop(context, true);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menunda unboxing: $e'), backgroundColor: Colors.red),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _submitting = false);
+      }
+    }
+  }
+
   late TextEditingController _recipientNameController;
   late TextEditingController _recipientPhoneController;
   late TextEditingController _catatanController;

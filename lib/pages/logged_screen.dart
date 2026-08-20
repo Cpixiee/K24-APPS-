@@ -154,7 +154,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
   }
 
   Future<void> _handleNavigationResult(dynamic result) async {
-    await _fetchDashboardData(showLoading: true);
+    await _fetchDashboardData(showLoading: false);
     if (result != null && result is Map) {
       if (mounted) {
         setState(() {

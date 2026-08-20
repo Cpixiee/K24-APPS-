@@ -339,7 +339,16 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
           width: double.infinity,
           errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
         );
-      } else if (cleanUrl.isNotEmpty && cleanUrl.contains('/')) {
+      } else if (cleanUrl.length > 100 && !cleanUrl.startsWith('http') && !cleanUrl.startsWith('/uploads')) {
+        // Raw Base64 string (starts with /9j/ or iVBOR or similar)
+        final bytes = base64Decode(cleanUrl);
+        imageWidget = Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
+        );
+      } else if (cleanUrl.isNotEmpty && (cleanUrl.startsWith('/') || cleanUrl.contains('.'))) {
         final fullUrl = cleanUrl.startsWith('/') ? '${ApiService.baseUrl}$cleanUrl' : '${ApiService.baseUrl}/$cleanUrl';
         imageWidget = Image.network(
           fullUrl,
