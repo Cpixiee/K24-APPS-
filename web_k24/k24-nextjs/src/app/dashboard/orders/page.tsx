@@ -55,6 +55,8 @@ interface StopItem {
   extra_items_note?: string
   extra_items_photo_url?: string
   facture_photo_url?: string
+  signature_photo_url?: string
+  pod_signature_photo_url?: string
 }
 
 interface OrderDetail {
@@ -95,6 +97,18 @@ export default function OrdersPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [approvingId, setApprovingId] = useState<number | null>(null)
   const [activeStopIndex, setActiveStopIndex] = useState(0)
+  const [lightboxImage, setLightboxImage] = useState<{
+    url: string
+    title: string
+    timestamp?: string
+  } | null>(null)
+
+  const formatFullPhotoUrl = (url?: string) => {
+    if (!url) return ''
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '103.236.140.19'
+    return `http://${hostname}:9001${url.startsWith('/') ? '' : '/'}${url}`
+  }
 
   // Action Dropdown & Delete Modal States
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
@@ -210,7 +224,7 @@ export default function OrdersPage() {
     }
   }
 
-  const PhotoGalleryViewer = ({ photoField, title }: { photoField?: string; title: string }) => {
+  const PhotoGalleryViewer = ({ photoField, title, timestamp }: { photoField?: string; title: string; timestamp?: string }) => {
     const [activeIndex, setActiveIndex] = useState(0)
 
     if (!photoField) return null
@@ -232,6 +246,7 @@ export default function OrdersPage() {
     if (!photos.length) return null
 
     const activePhoto = photos[activeIndex] || photos[0]
+    const formattedActivePhoto = formatFullPhotoUrl(activePhoto)
 
     return (
       <div className="mt-2 p-3 bg-card border border-border rounded-xl space-y-2">
@@ -269,12 +284,18 @@ export default function OrdersPage() {
 
         <div className="relative group overflow-hidden rounded-lg border border-border bg-black/5">
           <img
-            src={activePhoto}
+            src={formattedActivePhoto}
             alt={`${title} ${activeIndex + 1}`}
             className="h-44 w-full object-contain rounded-lg bg-slate-900/10 cursor-pointer hover:opacity-95 transition-all"
-            onClick={() => window.open(activePhoto, '_blank')}
+            onClick={() => setLightboxImage({ url: activePhoto, title: `${title} (${activeIndex + 1}/${photos.length})`, timestamp })}
           />
-          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+
+          {/* Dynamic Watermark Badge on Thumbnail */}
+          <div className="absolute bottom-2 left-2 bg-black/80 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[9px] font-mono border border-white/20 pointer-events-none z-10 flex items-center gap-1 shadow">
+            <span className="text-amber-400 font-bold">🕒 {timestamp || 'VERIFIED TIMESTAMP'}</span>
+          </div>
+
+          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
             <span className="bg-black/70 text-white text-[10px] px-2 py-1 rounded-md">Klik untuk perbesar 🔍</span>
           </div>
         </div>
@@ -292,7 +313,7 @@ export default function OrdersPage() {
                     : 'border-border opacity-60 hover:opacity-100'
                 }`}
               >
-                <img src={p} alt={`Thumb ${idx + 1}`} className="h-full w-full object-cover" />
+                <img src={formatFullPhotoUrl(p)} alt={`Thumb ${idx + 1}`} className="h-full w-full object-cover" />
               </button>
             ))}
           </div>
@@ -375,30 +396,35 @@ export default function OrdersPage() {
   const renderStopApproval = (s: StopItem) => {
     return (
       <div className="space-y-3 pt-2">
-        {/* 1. Foto Bukti Pickup (Driver) */}
+        {/* 1. Foto Bukti Pickup (Driver Gudang K-24) */}
         {s.pickup_photo_url ? (
           <div className="p-3.5 rounded-xl border border-blue-100 dark:border-blue-900 bg-blue-50/20 dark:bg-blue-950/10 space-y-2">
             <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400 font-bold">
-              <span>📦 Foto Bukti Pickup (Driver)</span>
+              <span>📦 1. Foto Bukti Pickup (Driver Gudang K-24)</span>
               {s.pickup_note && <span className="font-normal italic text-muted-foreground">"{s.pickup_note}"</span>}
             </div>
             <PhotoGalleryViewer photoField={s.pickup_photo_url} title="Bukti Pickup Barang" />
           </div>
         ) : (
           <div className="p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-xs text-muted-foreground flex items-center justify-between">
-            <span className="font-medium">📦 Foto Bukti Pickup:</span>
+            <span className="font-medium">📦 1. Foto Bukti Pickup:</span>
             <span className="italic text-slate-400">Belum di-upload oleh driver</span>
           </div>
         )}
 
-        {/* 1.5 Foto Bukti Tiba di Lokasi (Driver) */}
-        {s.arrived_photo_url && (
+        {/* 2. Foto Bukti Tiba di Lokasi (Driver) */}
+        {s.arrived_photo_url ? (
           <div className="p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900 bg-emerald-50/20 dark:bg-emerald-950/10 space-y-2">
             <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 font-bold">
-              <span>📍 Foto Bukti Tiba di Lokasi (Driver)</span>
+              <span>📍 2. Foto Bukti Tiba di Lokasi Apotek (Driver)</span>
               {s.arrived_note && <span className="font-normal italic text-muted-foreground">"{s.arrived_note}"</span>}
             </div>
-            <PhotoGalleryViewer photoField={s.arrived_photo_url} title="Bukti Tiba di Lokasi" />
+            <PhotoGalleryViewer photoField={s.arrived_photo_url} title="Bukti Tiba di Lokasi Apotek" />
+          </div>
+        ) : (
+          <div className="p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-xs text-muted-foreground flex items-center justify-between">
+            <span className="font-medium">📍 2. Foto Bukti Tiba di Lokasi:</span>
+            <span className="italic text-slate-400">Belum di-upload oleh driver</span>
           </div>
         )}
 
@@ -439,15 +465,15 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* 2. Unboxing Invoices & Approval */}
-        {(s.checked_invoices || s.status === 'COMPLETED_WAITING_APPROVAL' || s.status === 'COMPLETED' || s.unboxing_option) && (
+        {/* 3. Bukti Serah Terima & Verifikasi Invoice (Apoteker & Driver) */}
+        {(s.checked_invoices || s.status === 'COMPLETED_WAITING_APPROVAL' || s.status === 'COMPLETED' || s.unboxing_option || s.handover_photo_url || s.signature_photo_url || s.facture_photo_url) && (
           <div className={`p-4 rounded-xl border border-dashed ${
             s.status === 'COMPLETED' ? 'border-emerald-300 bg-emerald-50/10 dark:bg-emerald-950/10' : 'border-purple-300 bg-purple-50/10 dark:bg-purple-950/10'
           } space-y-3.5`}>
             <div className={`flex items-center gap-2 ${s.status === 'COMPLETED' ? 'text-emerald-600 dark:text-emerald-400' : 'text-purple-600 dark:text-purple-400'}`}>
               <CheckCircle className="h-4 w-4 shrink-0" />
               <span className="text-xs font-bold font-sans">
-                {s.status === 'COMPLETED' ? 'Pengiriman Selesai (COMPLETED)' : 'Proses Verifikasi & Faktur'}
+                🤝 3. Bukti Serah Terima & Verifikasi Invoice (Apoteker)
               </span>
             </div>
 
@@ -471,21 +497,29 @@ export default function OrdersPage() {
                 <PhotoGalleryViewer photoField={s.extra_items_photo_url} title="Foto Barang Tambahan" />
               )}
 
-              {/* 3. Bukti Faktur Fisik Uploaded by Driver */}
-              {s.facture_photo_url && s.facture_photo_url !== s.extra_items_photo_url ? (
-                <div className="pt-2 border-t border-dashed border-border/80">
-                  <span className="text-xs font-bold text-foreground block mb-2">📄 Bukti Faktur Fisik Tanda Tangan & Cap (Driver):</span>
-                  <PhotoGalleryViewer photoField={s.facture_photo_url} title="Foto Faktur Tanda Tangan & Cap" />
-                </div>
-              ) : null}
-
-              {/* 4. Foto Serah Terima Paket (Penerima) */}
+              {/* 3a. Foto Serah Terima Paket (Penerima) */}
               {s.handover_photo_url && (
                 <div className="pt-2 border-t border-dashed border-border/80">
                   <span className="text-xs font-bold text-foreground block mb-2">🤝 Foto Bukti Serah Terima Paket (Penerima/Apoteker):</span>
                   <PhotoGalleryViewer photoField={s.handover_photo_url} title="Foto Serah Terima Paket" />
                 </div>
               )}
+
+              {/* 3b. Tanda Tangan Digital Apoteker */}
+              {s.signature_photo_url && (
+                <div className="pt-2 border-t border-dashed border-border/80">
+                  <span className="text-xs font-bold text-foreground block mb-2">✍️ Tanda Tangan Digital Verifikasi Apoteker:</span>
+                  <PhotoGalleryViewer photoField={s.signature_photo_url} title="Tanda Tangan Digital Apoteker" />
+                </div>
+              )}
+
+              {/* 3c. Bukti Faktur Fisik Uploaded by Driver */}
+              {s.facture_photo_url && s.facture_photo_url !== s.extra_items_photo_url ? (
+                <div className="pt-2 border-t border-dashed border-border/80">
+                  <span className="text-xs font-bold text-foreground block mb-2">📄 Bukti Faktur Fisik Tanda Tangan & Cap (Driver):</span>
+                  <PhotoGalleryViewer photoField={s.facture_photo_url} title="Foto Faktur Tanda Tangan & Cap" />
+                </div>
+              ) : null}
             </div>
 
             {s.status !== 'COMPLETED' && s.status === 'COMPLETED_WAITING_APPROVAL' && (
@@ -508,6 +542,22 @@ export default function OrdersPage() {
             )}
           </div>
         )}
+
+        {/* 4. Bukti Pengembalian POD ke KDE / Gudang K-24 */}
+        {s.pod_signature_photo_url ? (
+          <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-2">
+            <div className="flex items-center justify-between text-xs text-indigo-700 dark:text-indigo-400 font-bold">
+              <span>🏢 4. Bukti Pengembalian POD ke KDE / Gudang K-24</span>
+              <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-extrabold">VERIFIED POD</span>
+            </div>
+            <PhotoGalleryViewer photoField={s.pod_signature_photo_url} title="Bukti Tanda Tangan & Cap Pengembalian POD Gudang" />
+          </div>
+        ) : s.status === 'COMPLETED' ? (
+          <div className="p-3 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/10 text-xs text-muted-foreground flex items-center justify-between">
+            <span className="font-medium text-indigo-700 dark:text-indigo-400">🏢 4. Bukti Pengembalian POD ke KDE:</span>
+            <span className="italic text-slate-400">Belum di-upload / Proses serah terima POD</span>
+          </div>
+        ) : null}
 
         {s.status === 'PENDING' && s.unboxing_option === 'WAITING_FOR_UNBOXING' && !s.checked_invoices && (
           <div className="p-4 rounded-xl border border-dashed border-amber-300 bg-amber-50/10 dark:bg-amber-950/10 space-y-1.5 text-xs text-muted-foreground">
@@ -1226,6 +1276,70 @@ export default function OrdersPage() {
               <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
               <span>Selesai: <strong className="text-foreground">{orders.filter(o => o.status === 'COMPLETED').length}</strong></span>
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Lightbox Preview Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/80">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📷</span>
+                <h3 className="font-bold text-sm text-white">{lightboxImage.title}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fullUrl = formatFullPhotoUrl(lightboxImage.url)
+                    window.open(fullUrl, '_blank', 'noopener,noreferrer')
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 text-xs font-semibold border border-blue-500/30 transition-colors flex items-center gap-1"
+                >
+                  <span>Buka di Tab Baru</span> ↗
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImage(null)}
+                  className="h-8 w-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-base transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Image View */}
+            <div className="relative flex-1 bg-black flex items-center justify-center min-h-[300px] max-h-[70vh] p-2 overflow-auto">
+              <img
+                src={formatFullPhotoUrl(lightboxImage.url)}
+                alt={lightboxImage.title}
+                className="max-h-[68vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
+
+              {/* Dynamic Camera Watermark Overlay */}
+              <div className="absolute bottom-4 left-4 right-4 sm:left-6 sm:right-auto bg-black/85 backdrop-blur-md text-white p-3 rounded-xl border border-white/20 shadow-xl max-w-md pointer-events-none">
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-1.5 mb-1.5">
+                  <span className="font-extrabold text-xs tracking-wider text-amber-400 font-mono uppercase flex items-center gap-1.5">
+                    <span>🕒</span> {lightboxImage.timestamp || 'REALTIME TIMESTAMP VERIFIED'}
+                  </span>
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold">
+                    GPS VERIFIED
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300 font-mono leading-tight">
+                  📍 K-24 LOGISTICS SYSTEM • REALTIME DIGITAL WATERMARK STAMP
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

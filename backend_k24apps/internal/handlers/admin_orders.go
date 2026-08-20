@@ -862,7 +862,9 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 	       COALESCE(o.checked_invoices, '') as checked_invoices,
 	       COALESCE(o.extra_items_note, '') as extra_items_note,
 	       COALESCE(o.extra_items_photo_url, '') as extra_items_photo_url,
-	       COALESCE(o.facture_photo_url, '') as facture_photo_url
+	       COALESCE(o.facture_photo_url, '') as facture_photo_url,
+	       COALESCE(o.signature_photo_url, '') as signature_photo_url,
+	       COALESCE(o.pod_signature_photo_url, '') as pod_signature_photo_url
 	FROM orders o
 	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
 	LEFT JOIN driver_profiles dp ON dp.user_id = o.driver_id
@@ -902,8 +904,10 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 		UnboxingOption      string   `json:"unboxing_option"`
 		CheckedInvoices     string   `json:"checked_invoices"`
 		ExtraItemsNote      string   `json:"extra_items_note"`
-		ExtraItemsPhotoUrl  string   `json:"extra_items_photo_url"`
-		FacturePhotoUrl     string   `json:"facture_photo_url"`
+		ExtraItemsPhotoUrl   string   `json:"extra_items_photo_url"`
+		FacturePhotoUrl      string   `json:"facture_photo_url"`
+		SignaturePhotoUrl    string   `json:"signature_photo_url"`
+		PODSignaturePhotoUrl string   `json:"pod_signature_photo_url"`
 	}
 
 	var pgRows interface {
@@ -942,7 +946,7 @@ func (h *AdminHandler) GetOrderDetail(c *gin.Context) {
 			&s.ArrivedPhotoUrl, &s.ArrivedNote, &s.HandoverPhotoUrl,
 			&s.RejectPhotoUrl, &s.RejectNote, &s.RejectReason, &s.RejectApproved,
 			&s.UnboxingOption, &s.CheckedInvoices, &s.ExtraItemsNote, &s.ExtraItemsPhotoUrl,
-			&s.FacturePhotoUrl,
+			&s.FacturePhotoUrl, &s.SignaturePhotoUrl, &s.PODSignaturePhotoUrl,
 		)
 		if err != nil {
 			continue
