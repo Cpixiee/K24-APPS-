@@ -57,6 +57,10 @@ func NotifyAdmins(ctx context.Context, db *pgxpool.Pool, title string, message s
 // GetNotifications returns notifications list for the logged-in user (Admin, Mitra, or Driver)
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	var uid int
+	var role string
+	if val, exists := c.Get("role"); exists {
+		role = val.(string)
+	}
 	if val, exists := c.Get("user_id"); exists {
 		uid = val.(int)
 	} else if val, exists := c.Get("driver_id"); exists {
@@ -67,22 +71,37 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	rows, err := h.DB.Query(ctx,
-		`SELECT id, COALESCE(user_id, driver_id, 0) as user_id, title, message, is_read, created_at 
-		 FROM notifications 
-		 WHERE user_id = $1 OR driver_id = $1 
-		 ORDER BY created_at DESC 
-		 LIMIT 50`, uid)
+	var pgRows interface {
+		Next() bool
+		Scan(...interface{}) error
+		Close()
+	}
+	var err error
+	if role == "ADMIN" {
+		pgRows, err = h.DB.Query(ctx,
+			`SELECT id, COALESCE(user_id, driver_id, 0) as user_id, title, message, is_read, created_at 
+			 FROM notifications 
+			 ORDER BY created_at DESC 
+			 LIMIT 200`)
+	} else {
+		pgRows, err = h.DB.Query(ctx,
+			`SELECT id, COALESCE(user_id, driver_id, 0) as user_id, title, message, is_read, created_at 
+			 FROM notifications 
+			 WHERE user_id = $1 OR driver_id = $1 
+			 ORDER BY created_at DESC 
+			 LIMIT 100`, uid)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal mengambil notifikasi: " + err.Error()})
 		return
 	}
-	defer rows.Close()
+	defer pgRows.Close()
 
 	notifications := []models.Notification{}
-	for rows.Next() {
+	for pgRows.Next() {
 		var n models.Notification
-		err := rows.Scan(&n.ID, &n.DriverID, &n.Title, &n.Message, &n.IsRead, &n.CreatedAt)
+		err := pgRows.Scan(&n.ID, &n.DriverID, &n.Title, &n.Message, &n.IsRead, &n.CreatedAt)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal membaca notifikasi: " + err.Error()})
 			return

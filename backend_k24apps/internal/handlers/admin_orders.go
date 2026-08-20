@@ -1772,6 +1772,33 @@ func (h *AdminHandler) UpdateOrderArrived(c *gin.Context) {
 		return
 	}
 
+	// Trigger Notification for Arrived event
+	var driverID, mitraID *int
+	var dispatchID, orderNum, pharmName string
+	_ = h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, COALESCE(dispatch_id, ''), order_number, COALESCE(pharmacy_name, customer_name) FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &dispatchID, &orderNum, &pharmName)
+	
+	var totalStops, stopNum int
+	if dispatchID != "" {
+		_ = h.DB.QueryRow(ctx, "SELECT COUNT(*) FROM orders WHERE dispatch_id = $1", dispatchID).Scan(&totalStops)
+		_ = h.DB.QueryRow(ctx, "SELECT COUNT(*) FROM orders WHERE dispatch_id = $1 AND id <= $2", dispatchID, orderID).Scan(&stopNum)
+	}
+	if totalStops == 0 { totalStops = 1; stopNum = 1 }
+
+	var driverName, driverPlate string
+	if driverID != nil {
+		_ = h.DB.QueryRow(ctx, "SELECT u.name, COALESCE(dp.plate_number, '') FROM users u LEFT JOIN driver_profiles dp ON dp.user_id = u.id WHERE u.id = $1", *driverID).Scan(&driverName, &driverPlate)
+	}
+
+	targetID := dispatchID
+	if targetID == "" { targetID = orderNum }
+
+	title := "Kurir Tiba di Lokasi"
+	msg := fmt.Sprintf("Driver %s (%s) telah tiba di %s (Titik %d dari %d Titik) order %s.", driverName, driverPlate, pharmName, stopNum, totalStops, targetID)
+	
+	if driverID != nil { _, _ = h.DB.Exec(ctx, "INSERT INTO notifications (driver_id, title, message) VALUES ($1, $2, $3)", *driverID, title, msg) }
+	if mitraID != nil { _, _ = h.DB.Exec(ctx, "INSERT INTO notifications (user_id, title, message) VALUES ($1, $2, $3)", *mitraID, title, msg) }
+	NotifyAdmins(ctx, h.DB, title, msg)
+
 	c.JSON(http.StatusOK, models.APIResponse{Status: "success", Message: "Bukti tiba di lokasi berhasil disimpan"})
 }
 

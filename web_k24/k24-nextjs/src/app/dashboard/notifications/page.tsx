@@ -6,7 +6,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import { useNotifications, WebNotification } from '@/context/NotificationContext'
 import { useAuth } from '@/context/AuthContext'
 import {
-  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft
+  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft, AlertCircle
 } from 'lucide-react'
 
 function formatTimeAgo(dateStr: string): string {
@@ -63,52 +63,122 @@ function extractOrderKey(item: WebNotification): { key: string; titleName: strin
   return { key: `NOTIF-${item.id}`, titleName: item.title || 'Notifikasi Sistem' }
 }
 
-// Parse real-time accurate title without forcing everything to "DONE"
-function getRealNotificationTitle(titleStr: string, messageStr: string) {
+// Parse real-time accurate title & event type without forcing everything to "DONE"
+function getNotificationEventDetails(titleStr?: string, messageStr?: string) {
   const text = `${titleStr || ''} ${messageStr || ''}`.toLowerCase()
 
-  // Extract explicit progress tag like [1/5] if present
-  const progressMatch = (titleStr || messageStr || '').match(/\[\d+\/\d+\]|Progress \[\d+\/\d+\]|Batch \[\d+\/\d+\]/i)
-  const tag = progressMatch ? `${progressMatch[0]} ` : ''
+  // 6. Pengembalian POD ke KDE
+  if (
+    text.includes('pengembalian pod') ||
+    text.includes('pod dikembalikan') ||
+    text.includes('pod disetujui') ||
+    text.includes('dikembalikan ke kde') ||
+    text.includes('gudang kde')
+  ) {
+    return {
+      type: 'POD_RETURNED',
+      badgeLabel: '🏢 Pengembalian POD',
+      pillBg: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300/50',
+      icon: <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />,
+    }
+  }
 
-  if (text.includes('selesai') || text.includes('completed') || text.includes('done') || text.includes('pod disetujui')) {
+  // 5. Verifikasi Invoice & Unboxing Apoteker
+  if (
+    text.includes('verifikasi') ||
+    text.includes('faktur') ||
+    text.includes('unbox') ||
+    text.includes('apoteker') ||
+    text.includes('tidak sesuai') ||
+    text.includes('cacat') ||
+    text.includes('hilang') ||
+    text.includes('bermasalah')
+  ) {
+    const isProblem =
+      text.includes('tidak sesuai') ||
+      text.includes('cacat') ||
+      text.includes('hilang') ||
+      text.includes('bermasalah') ||
+      text.includes('ditolak')
+    if (isProblem) {
+      return {
+        type: 'INVOICE_PROBLEM',
+        badgeLabel: '⚠️ Invoice Tidak Sesuai',
+        pillBg: 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border-rose-300/50',
+        icon: <AlertCircle className="h-4 w-4 text-rose-600 dark:text-rose-400" />,
+      }
+    }
     return {
-      title: tag ? `${tag}Pesanan SELESAI` : 'Pesanan SELESAI (DONE)',
+      type: 'INVOICE_VERIFIED',
+      badgeLabel: '🤝 Verifikasi Invoice',
       pillBg: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300/50',
-      icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
+      icon: <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
     }
   }
-  if (text.includes('pengantaran') || text.includes('delivering') || text.includes('kurir jalan') || text.includes('on delivery')) {
+
+  // 4. Kurir Tiba di Lokasi Apotek
+  if (
+    text.includes('tiba') ||
+    text.includes('arrived') ||
+    text.includes('sampai di lokasi') ||
+    text.includes('titik')
+  ) {
     return {
-      title: tag ? `${tag}DALAM PENGANTARAN` : 'Pesanan DALAM PENGANTARAN (DELIVERING)',
-      pillBg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-300/50',
-      icon: <Truck className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
-    }
-  }
-  if (text.includes('penjemputan') || text.includes('pickup') || text.includes('disiapkan') || text.includes('tugas')) {
-    return {
-      title: 'Penjemputan APOTEK (PICKING UP)',
-      pillBg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300/50',
-      icon: <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
-    }
-  }
-  if (text.includes('faktur') || text.includes('unbox') || text.includes('verifikasi')) {
-    return {
-      title: 'Verifikasi Faktur',
-      pillBg: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border-purple-300/50',
-      icon: <FileText className="h-4 w-4 text-purple-600 dark:text-purple-400" />,
-    }
-  }
-  if (text.includes('tiba') || text.includes('arrived') || text.includes('lokasi')) {
-    return {
-      title: 'Driver TIBA DI LOKASI (ARRIVED)',
+      type: 'ORDER_ARRIVED',
+      badgeLabel: '📍 Tiba di Lokasi',
       pillBg: 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border-purple-300/50',
       icon: <Radio className="h-4 w-4 text-purple-600 dark:text-purple-400" />,
     }
   }
 
+  // 3. Barang Di-Pickup Driver
+  if (
+    text.includes('pickup') ||
+    text.includes('diambil') ||
+    text.includes('di-pickup') ||
+    text.includes('penjemputan')
+  ) {
+    return {
+      type: 'ORDER_PICKUP',
+      badgeLabel: '🚚 Sudah Pickup',
+      pillBg: 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border-amber-300/50',
+      icon: <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
+    }
+  }
+
+  // 2. Order Dispatched / Kurir Ditugaskan
+  if (
+    text.includes('dispatch') ||
+    text.includes('ditugaskan') ||
+    text.includes('penugasan')
+  ) {
+    return {
+      type: 'ORDER_DISPATCHED',
+      badgeLabel: '🚗 Dispatch Kurir',
+      pillBg: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/80 dark:text-cyan-300 border-cyan-300/50',
+      icon: <Truck className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />,
+    }
+  }
+
+  // 1. Order Dibuat
+  if (
+    text.includes('dibuat') ||
+    text.includes('order baru') ||
+    text.includes('created') ||
+    text.includes('pesanan baru')
+  ) {
+    return {
+      type: 'ORDER_CREATED',
+      badgeLabel: '📦 Order Dibuat',
+      pillBg: 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border-blue-300/50',
+      icon: <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
+    }
+  }
+
+  // Default fallback
   return {
-    title: titleStr || 'Pemberitahuan Sistem',
+    type: 'SYSTEM',
+    badgeLabel: titleStr || 'Pemberitahuan Sistem',
     pillBg: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300 border-slate-300/50',
     icon: <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
   }
@@ -324,7 +394,7 @@ export default function NotificationsWebPage() {
               ) : (
                 groupedOrders.map((group) => {
                   const latestItem = group.items[0]
-                  const realTitleInfo = getRealNotificationTitle(latestItem.title, latestItem.message)
+                  const latestEvent = getNotificationEventDetails(latestItem.title, latestItem.message)
                   const isSelected = activeGroup?.key === group.key
                   const hasUnread = group.items.some((i) => !i.is_read)
 
@@ -332,7 +402,7 @@ export default function NotificationsWebPage() {
                     <div
                       key={group.key}
                       onClick={() => handleSelectGroup(group.key)}
-                      className={`p-4 cursor-pointer transition-colors relative flex flex-col gap-1 hover:bg-accent/50 ${
+                      className={`p-4 cursor-pointer transition-colors relative flex flex-col gap-1.5 hover:bg-accent/50 ${
                         isSelected
                           ? 'bg-blue-50/70 dark:bg-blue-950/40 border-l-4 border-l-blue-600'
                           : hasUnread
@@ -340,14 +410,12 @@ export default function NotificationsWebPage() {
                           : 'bg-card opacity-90'
                       }`}
                     >
-                      {/* Top Row: Title + Time */}
+                      {/* Top Row: Order ID Title + Time */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          {hasUnread && (
-                            <span className="h-2 w-2 rounded-full bg-blue-600 shrink-0" />
-                          )}
-                          <span className={`text-xs font-bold truncate ${hasUnread ? 'text-foreground font-black' : 'text-slate-700 dark:text-slate-200'}`}>
-                            {realTitleInfo.title}
+                          {hasUnread && <span className="h-2 w-2 rounded-full bg-blue-600 shrink-0" />}
+                          <span className={`text-xs font-black truncate ${hasUnread ? 'text-foreground font-black' : 'text-slate-800 dark:text-slate-200'}`}>
+                            {group.titleName}
                           </span>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0 font-medium">
@@ -355,8 +423,16 @@ export default function NotificationsWebPage() {
                         </span>
                       </div>
 
+                      {/* Second Row: Latest Event Status Badge */}
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${latestEvent.pillBg}`}>
+                          {latestEvent.icon}
+                          {latestEvent.badgeLabel}
+                        </span>
+                      </div>
+
                       {/* Message Preview */}
-                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed pl-3.5">
+                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed pt-0.5">
                         {latestItem.message}
                       </p>
                     </div>
@@ -412,12 +488,16 @@ export default function NotificationsWebPage() {
                   </button>
                 </div>
 
-                {/* Chat Feed Scroll Area with geometric/subtle grid pattern */}
+                {/* Chat Feed Scroll Area with geometric/subtle grid pattern - Chronological Order (Oldest -> Newest) */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-                  {/* Group items by date */}
                   {(() => {
+                    // Sort items chronologically (oldest at top to newest at bottom like WhatsApp chat)
+                    const chronologicalItems = [...activeGroup.items].sort(
+                      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                    )
+
                     const dateGroups = new Map<string, WebNotification[]>()
-                    activeGroup.items.forEach((item) => {
+                    chronologicalItems.forEach((item) => {
                       const label = getDateGroupLabel(item.created_at)
                       if (!dateGroups.has(label)) dateGroups.set(label, [])
                       dateGroups.get(label)!.push(item)
@@ -434,34 +514,35 @@ export default function NotificationsWebPage() {
 
                         {/* Notifications in this date group */}
                         {items.map((item) => {
-                          const statusInfo = getRealNotificationTitle(item.title, item.message)
+                          const statusInfo = getNotificationEventDetails(item.title, item.message)
 
                           return (
                             <div key={item.id} className="space-y-2.5 max-w-2xl mx-auto">
                               {/* Status Pill Badge Centered */}
                               <div className="flex justify-center">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${statusInfo.pillBg}`}>
+                                <span className={`inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold border shadow-2xs ${statusInfo.pillBg}`}>
                                   {statusInfo.icon}
-                                  {statusInfo.title}
+                                  {statusInfo.badgeLabel}
                                 </span>
                               </div>
 
                               {/* Notification Message Card Bubble */}
-                              <div className="rounded-2xl border border-border bg-card p-4 shadow-xs space-y-2">
-                                <div className="flex items-center gap-2 font-bold text-xs text-foreground">
-                                  {item.title.toLowerCase().includes('faktur') ? (
-                                    <FileText className="h-4 w-4 text-purple-600" />
-                                  ) : (
-                                    <Info className="h-4 w-4 text-blue-600" />
-                                  )}
-                                  <span>{item.title || 'Status Update'}</span>
+                              <div className="rounded-2xl border border-border bg-card p-4 shadow-xs space-y-2 hover:border-blue-300/50 transition-colors">
+                                <div className="flex items-center justify-between gap-2 font-bold text-xs text-foreground">
+                                  <div className="flex items-center gap-2">
+                                    {statusInfo.icon}
+                                    <span>{item.title || statusInfo.badgeLabel}</span>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    {formatClockTime(item.created_at)}
+                                  </span>
                                 </div>
 
-                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                <p className="text-xs text-muted-foreground leading-relaxed pt-0.5">
                                   {item.message}
                                 </p>
 
-                                <div className="flex items-center justify-end gap-1 pt-1 text-[10px] text-muted-foreground font-medium">
+                                <div className="flex items-center justify-end gap-1 pt-1 text-[10px] text-muted-foreground font-medium border-t border-border/40">
                                   <span>{formatClockTime(item.created_at)}</span>
                                   <CheckCheck className="h-3.5 w-3.5 text-blue-600" />
                                 </div>
