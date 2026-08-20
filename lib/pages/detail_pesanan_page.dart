@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:apps_k24/pages/verifikasi_pod_page.dart';
 import 'package:apps_k24/utils/watermark_helper.dart';
+import 'package:apps_k24/services/gps_location_service.dart';
 
 class DetailPesananPage extends StatefulWidget {
   final OrderModel order;
@@ -47,6 +48,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
 
   Future<void> _loadInitialActiveOrders() async {
     try {
+      GpsLocationService.sendLocationUpdate();
       final dashboard = await ApiService.getDashboard();
       if (mounted) {
         setState(() {

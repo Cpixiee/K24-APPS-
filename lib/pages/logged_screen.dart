@@ -11,6 +11,7 @@ import 'package:apps_k24/pages/verifikasi_pod_page.dart';
 import 'package:apps_k24/pages/notifications_page.dart';
 import 'package:apps_k24/pages/track_live_page.dart';
 import 'package:apps_k24/services/notification_service.dart';
+import 'package:apps_k24/services/gps_location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoggedScreen extends StatefulWidget {
@@ -71,8 +72,13 @@ class _LoggedScreenState extends State<LoggedScreen> {
       _checkNotifications();
     });
 
-    // Setup periodic GPS location update every 15 seconds
-    _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    // Setup periodic GPS location update every 10 seconds
+    _locationTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _sendDriverLocationUpdate();
+    });
+
+    // Request GPS permission and trigger initial location update
+    GpsLocationService.checkPermission().then((_) {
       _sendDriverLocationUpdate();
     });
   }
@@ -85,14 +91,10 @@ class _LoggedScreenState extends State<LoggedScreen> {
   }
 
   Future<void> _sendDriverLocationUpdate() async {
-    if (_dashboardData != null && _dashboardData!.driver.isActive) {
-      // Trigger location update gracefully
-      try {
-        await ApiService.updateDriverLocation(
-          -6.2019957,
-          106.8551888,
-        );
-      } catch (_) {}
+    try {
+      await GpsLocationService.sendLocationUpdate();
+    } catch (e) {
+      debugPrint('[GPS Update Error]: $e');
     }
   }
 
@@ -158,6 +160,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
 
     try {
       await ApiService.toggleActive(value);
+      if (value) {
+        GpsLocationService.sendLocationUpdate();
+      }
       // Refresh dashboard data to sync status
       await _fetchDashboardData();
     } catch (e) {
