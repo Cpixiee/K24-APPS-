@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 
 interface InvoiceItem {
+  invoice_no?: string
+  catatan?: string
   parent_order_number?: string
   order_number?: string
   medicine_summary?: string
@@ -116,6 +118,7 @@ export default function CekInvoicePage() {
       // Search query filter
       if (!searchQuery.trim()) return true
       const q = searchQuery.toLowerCase().trim()
+      const invNo = (item.invoice_no || '').toLowerCase()
       const orderNo = (item.order_number || '').toLowerCase()
       const parentOrderNo = (item.parent_order_number || '').toLowerCase()
       const dispatchId = (item.dispatch_id || '').toLowerCase()
@@ -127,6 +130,7 @@ export default function CekInvoicePage() {
       const medSummary = (item.medicine_summary || '').toLowerCase()
 
       return (
+        invNo.includes(q) ||
         orderNo.includes(q) ||
         parentOrderNo.includes(q) ||
         dispatchId.includes(q) ||
@@ -380,12 +384,12 @@ export default function CekInvoicePage() {
                 const checkedText = (item.checked_invoices || '').trim()
                 const summaryText = (item.medicine_summary || '').trim()
                 const invListText = checkedText || summaryText
-                const orderNum = item.order_number || item.parent_order_number || `ORDER-${index + 1}`
+                const displayTitle = item.invoice_no || item.order_number || item.parent_order_number || `ORDER-${index + 1}`
                 const dateStr = item.created_at ? new Date(item.created_at).toLocaleString('id-ID') : '-'
 
                 return (
                   <div
-                    key={`${orderNum}-${index}`}
+                    key={`${displayTitle}-${index}`}
                     className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-500/50 shadow-sm hover:shadow-md transition-all p-5 space-y-4"
                   >
                     {/* Card Header Row */}
@@ -395,10 +399,15 @@ export default function CekInvoicePage() {
                           #{index + 1}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-extrabold text-slate-800 text-base">
-                              {orderNum}
+                              {displayTitle}
                             </h3>
+                            {item.order_number && item.order_number !== displayTitle && (
+                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200">
+                                Order: {item.order_number}
+                              </span>
+                            )}
                             {item.dispatch_id && (
                               <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
                                 {item.dispatch_id}

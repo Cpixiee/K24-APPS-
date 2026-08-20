@@ -536,20 +536,30 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 	dateFilter := c.Query("date") // e.g. "2026-07-24"
 
 	baseQuery := `
-	SELECT COALESCE(NULLIF(o.parent_order_number, ''), o.order_number) as parent_order_number,
-	       o.medicine_summary, o.checked_invoices,
+	SELECT o.order_number,
+	       COALESCE(NULLIF(o.parent_order_number, ''), o.order_number) as parent_order_number,
+	       COALESCE(o.medicine_summary, '') as medicine_summary,
+	       COALESCE(o.checked_invoices, '') as checked_invoices,
 	       COALESCE(o.delivery_address, '') as delivery_address,
 	       COALESCE(u_driver.name, '') as driver_name,
 	       COALESCE(u_driver.phone, '') as driver_phone,
 	       COALESCE(dp.plate_number, '') as driver_plate,
 	       COALESCE(dp.vehicle_type, 'motor') as vehicle_type,
-	       o.created_at, o.status, COALESCE(o.dispatch_id, '') as dispatch_id,
+	       o.created_at, o.status,
+	       COALESCE(o.dispatch_id, '') as dispatch_id,
 	       COALESCE(o.customer_name, '') as customer_name,
+	       COALESCE(o.pharmacy_name, '') as pharmacy_name,
 	       COALESCE(o.reject_reason, '') as reject_reason,
 	       COALESCE(o.reject_note, '') as reject_note,
 	       COALESCE(o.extra_items_note, '') as extra_items_note,
 	       COALESCE(o.unboxing_option, '') as unboxing_option,
-	       COALESCE(o.pickup_note, '') as pickup_note
+	       COALESCE(o.pickup_note, '') as pickup_note,
+	       COALESCE(o.arrived_photo_url, '') as arrived_photo_url,
+	       COALESCE(o.facture_photo_url, '') as facture_photo_url,
+	       COALESCE(o.signature_photo_url, '') as signature_photo_url,
+	       COALESCE(o.pod_signature_photo_url, '') as pod_signature_photo_url,
+	       COALESCE(o.handover_photo_url, '') as handover_photo_url,
+	       COALESCE(o.arrived_note, '') as arrived_note
 	FROM orders o
 	LEFT JOIN users u_driver ON u_driver.id = o.driver_id
 	LEFT JOIN driver_profiles dp ON dp.user_id = o.driver_id
@@ -594,63 +604,73 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 	defer rows.Close()
 
 	type FlatInvoiceRow struct {
-		InvoiceNo      string    `json:"invoice_no"`
-		NamaApotek     string    `json:"nama_apotek"`
-		DriverName     string    `json:"driver_name"`
-		DriverPhone    string    `json:"driver_phone"`
-		DriverPlate    string    `json:"driver_plate"`
-		VehicleType    string    `json:"vehicle_type"`
-		Status         string    `json:"status"`    // "DONE", "MISSING", "PENDING"
-		Catatan        string    `json:"catatan"`   // "" for DONE, reason for MISSING
-		CreatedAt      time.Time `json:"created_at"`
-		DispatchID     string    `json:"dispatch_id"`
-		RejectReason   string    `json:"reject_reason,omitempty"`
-		RejectNote     string    `json:"reject_note,omitempty"`
-		ExtraItemsNote string    `json:"extra_items_note,omitempty"`
-		UnboxingOption string    `json:"unboxing_option,omitempty"`
-		PickupNote     string    `json:"pickup_note,omitempty"`
+		OrderNumber          string    `json:"order_number"`
+		ParentOrderNumber    string    `json:"parent_order_number"`
+		InvoiceNo            string    `json:"invoice_no"`
+		NamaApotek           string    `json:"nama_apotek"`
+		PharmacyName         string    `json:"pharmacy_name"`
+		CustomerName         string    `json:"customer_name"`
+		DeliveryAddress      string    `json:"delivery_address"`
+		MedicineSummary      string    `json:"medicine_summary"`
+		CheckedInvoices      string    `json:"checked_invoices"`
+		DriverName           string    `json:"driver_name"`
+		DriverPhone          string    `json:"driver_phone"`
+		DriverPlate          string    `json:"driver_plate"`
+		VehicleType          string    `json:"vehicle_type"`
+		Status               string    `json:"status"`
+		Catatan              string    `json:"catatan"`
+		CreatedAt            time.Time `json:"created_at"`
+		DispatchID           string    `json:"dispatch_id"`
+		RejectReason         string    `json:"reject_reason,omitempty"`
+		RejectNote           string    `json:"reject_note,omitempty"`
+		ExtraItemsNote       string    `json:"extra_items_note,omitempty"`
+		UnboxingOption       string    `json:"unboxing_option,omitempty"`
+		PickupNote           string    `json:"pickup_note,omitempty"`
+		ArrivedPhotoUrl      string    `json:"arrived_photo_url,omitempty"`
+		FacturePhotoUrl      string    `json:"facture_photo_url,omitempty"`
+		SignaturePhotoUrl    string    `json:"signature_photo_url,omitempty"`
+		PodSignaturePhotoUrl string    `json:"pod_signature_photo_url,omitempty"`
+		HandoverPhotoUrl     string    `json:"handover_photo_url,omitempty"`
+		ArrivedNote          string    `json:"arrived_note,omitempty"`
 	}
 
 	var result []FlatInvoiceRow
 
 	for rows.Next() {
-		var parentOrderNumber, medicineSummary, checkedInvoices, deliveryAddress, driverName, driverPhone, driverPlate, vehicleType, orderStatus, dispatchID, customerName string
+		var orderNumber, parentOrderNumber, medicineSummary, checkedInvoices, deliveryAddress, driverName, driverPhone, driverPlate, vehicleType, orderStatus, dispatchID, customerName, pharmacyName string
 		var rejectReason, rejectNote, extraItemsNote, unboxingOption, pickupNote string
+		var arrivedPhotoUrl, facturePhotoUrl, signaturePhotoUrl, podSignaturePhotoUrl, handoverPhotoUrl, arrivedNote string
 		var createdAt time.Time
 
-		if err := rows.Scan(&parentOrderNumber, &medicineSummary, &checkedInvoices,
+		if err := rows.Scan(
+			&orderNumber, &parentOrderNumber, &medicineSummary, &checkedInvoices,
 			&deliveryAddress, &driverName, &driverPhone, &driverPlate, &vehicleType,
-			&createdAt, &orderStatus, &dispatchID, &customerName,
-			&rejectReason, &rejectNote, &extraItemsNote, &unboxingOption, &pickupNote); err != nil {
+			&createdAt, &orderStatus, &dispatchID, &customerName, &pharmacyName,
+			&rejectReason, &rejectNote, &extraItemsNote, &unboxingOption, &pickupNote,
+			&arrivedPhotoUrl, &facturePhotoUrl, &signaturePhotoUrl, &podSignaturePhotoUrl, &handoverPhotoUrl, &arrivedNote,
+		); err != nil {
 			continue
 		}
 
-		// Determine apotek name from customer_name (delivery address recipient)
+		// Determine apotek name from customer_name or pharmacy_name
 		namaApotek := customerName
+		if namaApotek == "" {
+			namaApotek = pharmacyName
+		}
 		if namaApotek == "" {
 			namaApotek = deliveryAddress
 		}
 
-		// Parse invoice list from medicine_summary: "... Invoices: INV-001, INV-002, ..."
-		var invoiceList []string
-		if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
-			for _, inv := range strings.Split(parts[1], ", ") {
-				inv = strings.TrimSpace(inv)
-				if inv != "" {
-					invoiceList = append(invoiceList, inv)
-				}
-			}
-		}
-
 		// Parse checked_invoices: "INV-001: DONE; INV-002: MISSING (Hilang: catatan); INV-003: DONE"
 		checkedMap := map[string]struct{ Status, Catatan string }{}
+		var invoiceList []string
+
 		if checkedInvoices != "" {
 			for _, entry := range strings.Split(checkedInvoices, "; ") {
 				entry = strings.TrimSpace(entry)
 				if entry == "" {
 					continue
 				}
-				// Split on first ": "
 				colonIdx := strings.Index(entry, ": ")
 				if colonIdx < 0 {
 					continue
@@ -661,67 +681,78 @@ func (h *AdminHandler) GetFlatInvoices(c *gin.Context) {
 				var status, catatan string
 				if strings.HasPrefix(rest, "MISSING") {
 					status = "MISSING"
-					// Extract note in parentheses e.g. (Hilang: barang kurang)
 					if parenStart := strings.Index(rest, "("); parenStart >= 0 {
 						catatan = strings.TrimRight(rest[parenStart+1:], ")")
 					}
 				} else {
 					status = "DONE"
-					catatan = "Done"
+					catatan = "Sesuai (Verified)"
 				}
 				checkedMap[invNo] = struct{ Status, Catatan string }{status, catatan}
+				if invNo != "" {
+					invoiceList = append(invoiceList, invNo)
+				}
 			}
+		}
+
+		// Also parse medicine_summary: "... Invoices: INV-001, INV-002, ..."
+		if parts := strings.SplitN(medicineSummary, "Invoices: ", 2); len(parts) == 2 {
+			for _, inv := range strings.Split(parts[1], ", ") {
+				inv = strings.TrimSpace(inv)
+				if inv != "" {
+					alreadyIn := false
+					for _, existing := range invoiceList {
+						if strings.EqualFold(existing, inv) {
+							alreadyIn = true
+							break
+						}
+					}
+					if !alreadyIn {
+						invoiceList = append(invoiceList, inv)
+					}
+				}
+			}
+		}
+
+		// Fallback: If no invoice extracted, add orderNumber as invoice number
+		if len(invoiceList) == 0 {
+			invoiceList = append(invoiceList, orderNumber)
 		}
 
 		// Expand: one row per invoice
 		for _, invNo := range invoiceList {
 			statusInfo, found := checkedMap[invNo]
 			if !found {
-				statusInfo = struct{ Status, Catatan string }{"PENDING", "Belum diperiksa"}
+				statusInfo = struct{ Status, Catatan string }{orderStatus, "Belum diperiksa"}
 			}
 			result = append(result, FlatInvoiceRow{
-				InvoiceNo:      invNo,
-				NamaApotek:     namaApotek,
-				DriverName:     driverName,
-				DriverPhone:    driverPhone,
-				DriverPlate:    driverPlate,
-				VehicleType:    vehicleType,
-				Status:         statusInfo.Status,
-				Catatan:        statusInfo.Catatan,
-				CreatedAt:      createdAt,
-				DispatchID:     dispatchID,
-				RejectReason:   rejectReason,
-				RejectNote:     rejectNote,
-				ExtraItemsNote: extraItemsNote,
-				UnboxingOption: unboxingOption,
-				PickupNote:     pickupNote,
-			})
-		}
-
-		// If no invoices parsed but order exists, add placeholder row
-		if len(invoiceList) == 0 {
-			status := "PENDING"
-			catatan := "Belum diperiksa"
-			if checkedInvoices != "" {
-				status = "DONE"
-				catatan = "Done"
-			}
-			result = append(result, FlatInvoiceRow{
-				InvoiceNo:      parentOrderNumber,
-				NamaApotek:     namaApotek,
-				DriverName:     driverName,
-				DriverPhone:    driverPhone,
-				DriverPlate:    driverPlate,
-				VehicleType:    vehicleType,
-				Status:         status,
-				Catatan:        catatan,
-				CreatedAt:      createdAt,
-				DispatchID:     dispatchID,
-				RejectReason:   rejectReason,
-				RejectNote:     rejectNote,
-				ExtraItemsNote: extraItemsNote,
-				UnboxingOption: unboxingOption,
-				PickupNote:     pickupNote,
+				OrderNumber:          orderNumber,
+				ParentOrderNumber:    parentOrderNumber,
+				InvoiceNo:            invNo,
+				NamaApotek:           namaApotek,
+				PharmacyName:         pharmacyName,
+				CustomerName:         customerName,
+				DeliveryAddress:      deliveryAddress,
+				MedicineSummary:      medicineSummary,
+				CheckedInvoices:      checkedInvoices,
+				DriverName:           driverName,
+				DriverPhone:          driverPhone,
+				DriverPlate:          driverPlate,
+				VehicleType:          vehicleType,
+				Status:               statusInfo.Status,
+				Catatan:              statusInfo.Catatan,
+				CreatedAt:            createdAt,
+				DispatchID:           dispatchID,
+				RejectReason:         rejectReason,
+				RejectNote:           rejectNote,
+				ExtraItemsNote:       extraItemsNote,
+				UnboxingOption:       unboxingOption,
+				PickupNote:           pickupNote,
+				ArrivedPhotoUrl:      arrivedPhotoUrl,
+				FacturePhotoUrl:      facturePhotoUrl,
+				SignaturePhotoUrl:    signaturePhotoUrl,
+				PodSignaturePhotoUrl: podSignaturePhotoUrl,
+				HandoverPhotoUrl:     handoverPhotoUrl,
 			})
 		}
 	}
