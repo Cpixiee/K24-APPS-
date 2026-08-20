@@ -6,7 +6,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import { useNotifications, WebNotification } from '@/context/NotificationContext'
 import { useAuth } from '@/context/AuthContext'
 import {
-  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight
+  Bell, CheckCheck, CheckCircle2, Truck, Package, Radio, RefreshCw, Search, Plus, Send, FileText, Info, ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight, Printer
 } from 'lucide-react'
 
 function formatTimeAgo(dateStr: string): string {
@@ -372,9 +372,10 @@ export default function NotificationsWebPage() {
   }, [filteredNotifications])
 
   // Auto-select first item if not set or invalid
+  const isSummarySelected = selectedKey === 'DAILY_CLOSING_SUMMARY'
   const activeGroup = useMemo(() => {
     if (groupedOrders.length === 0) return null
-    if (selectedKey) {
+    if (selectedKey && selectedKey !== 'DAILY_CLOSING_SUMMARY') {
       const found = groupedOrders.find((g) => g.key === selectedKey)
       if (found) return found
     }
@@ -588,6 +589,44 @@ export default function NotificationsWebPage() {
 
             {/* Notification List Body */}
             <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+              {/* TOP CARD ITEM: Daily Closing Summary Card ("Laporan Tutup Buku Tanggal X") */}
+              {dailySummary && (
+                <div
+                  onClick={() => {
+                    setSelectedKey('DAILY_CLOSING_SUMMARY')
+                    setMobileDetailOpen(true)
+                  }}
+                  className={`p-4 cursor-pointer transition-all relative flex flex-col gap-1.5 border-b border-emerald-200 dark:border-emerald-900/60 ${
+                    isSummarySelected
+                      ? 'bg-emerald-100/80 dark:bg-emerald-950/60 border-l-4 border-l-emerald-600 font-bold'
+                      : 'bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="flex h-2 w-2 rounded-full bg-emerald-600 shrink-0 animate-pulse" />
+                      <span className="text-xs font-black truncate text-emerald-950 dark:text-emerald-100">
+                        📊 Summary Laporan {dailySummary.dateFormatted}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 shrink-0">
+                      Tutup Buku
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white shadow-2xs">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {dailySummary.isAllCompleted ? '100% COMPLETED' : 'PENGANTARAN BERJALAN'}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-300 line-clamp-2 leading-relaxed pt-0.5 font-medium">
+                    {dailySummary.driverCount} Driver • {dailySummary.pharmacyCount} Apotek • {dailySummary.invoiceCount} Invoice ({dailySummary.firstTime} - {dailySummary.lastTime})
+                  </p>
+                </div>
+              )}
+
               {groupedOrders.length === 0 ? (
                 <div className="flex h-48 flex-col items-center justify-center text-center p-6 space-y-3">
                   <Bell className="h-10 w-10 text-muted-foreground/30" />
@@ -610,7 +649,7 @@ export default function NotificationsWebPage() {
                 groupedOrders.map((group) => {
                   const latestItem = group.items[0]
                   const latestEvent = getNotificationEventDetails(latestItem.title, latestItem.message)
-                  const isSelected = activeGroup?.key === group.key
+                  const isSelected = activeGroup?.key === group.key && !isSummarySelected
                   const hasUnread = group.items.some((i) => !i.is_read)
 
                   return (
@@ -663,7 +702,161 @@ export default function NotificationsWebPage() {
               mobileDetailOpen ? 'flex' : 'hidden md:flex'
             }`}
           >
-            {activeGroup ? (
+            {isSummarySelected && dailySummary ? (
+              /* Full Page Daily Closing Report Dashboard View */
+              <div className="flex-1 flex flex-col overflow-y-auto p-4 sm:p-6 space-y-6 bg-card">
+                {/* Header Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-card border border-border shadow-xs">
+                  <div className="flex items-center gap-3">
+                    {/* Mobile Back Button */}
+                    <button
+                      onClick={() => setMobileDetailOpen(false)}
+                      className="md:hidden flex h-8 w-8 items-center justify-center rounded-full hover:bg-accent"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold shadow-xs">
+                      📊
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-foreground">
+                        Summary Laporan Pengiriman Tanggal {dailySummary.dateFormatted}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Laporan Resmi Tutup Buku Operasional Logistik K-24
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-200 transition shadow-xs shrink-0"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Cetak Laporan Tutup Buku
+                  </button>
+                </div>
+
+                {/* Main Green Banner matching user's exact screenshot */}
+                <div className="rounded-3xl border-2 border-emerald-300 dark:border-emerald-700/80 bg-gradient-to-br from-emerald-50/90 via-card to-emerald-50/30 dark:from-emerald-950/50 dark:via-card dark:to-emerald-950/20 p-6 shadow-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200 dark:border-emerald-800/60 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-600 text-white font-bold text-lg shadow-xs">
+                        🎉
+                      </div>
+                      <div>
+                        <h4 className="text-base font-extrabold text-foreground">
+                          Summary Laporan Pengiriman Tanggal {dailySummary.dateFormatted}
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Rekapitulasi aktivitas tugas pengantaran & verifikasi faktur harian.
+                        </p>
+                      </div>
+                    </div>
+
+                    {dailySummary.isAllCompleted ? (
+                      <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-extrabold bg-emerald-600 text-white shadow-xs">
+                        <CheckCircle2 className="h-4 w-4" />
+                        SELURUH PENGANTARAN COMPLETED (100%)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-blue-600 text-white shadow-xs">
+                        <Truck className="h-4 w-4" />
+                        PENGANTARAN SEDANG BERJALAN
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 4 Large KPI Cards matching user's screenshot */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-4 rounded-2xl bg-card border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs space-y-1">
+                      <div className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Truck className="h-4 w-4 text-blue-600" /> Driver Bertugas
+                      </div>
+                      <div className="text-lg font-black text-foreground pt-1">
+                        {dailySummary.driverCount} Driver
+                      </div>
+                      <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {dailySummary.driverNames}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-card border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs space-y-1">
+                      <div className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Package className="h-4 w-4 text-amber-600" /> Total Apotek
+                      </div>
+                      <div className="text-lg font-black text-foreground pt-1">
+                        {dailySummary.pharmacyCount} Apotek
+                      </div>
+                      <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {dailySummary.dispatchCount} Dispatch Order
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-card border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs space-y-1">
+                      <div className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <FileText className="h-4 w-4 text-purple-600" /> Total Invoice
+                      </div>
+                      <div className="text-lg font-black text-foreground pt-1">
+                        {dailySummary.invoiceCount} Invoice
+                      </div>
+                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        100% Diverifikasi
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-card border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs space-y-1">
+                      <div className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Radio className="h-4 w-4 text-emerald-600" /> Waktu Operasi
+                      </div>
+                      <div className="text-sm font-black text-foreground pt-1">
+                        {dailySummary.firstTime} - {dailySummary.lastTime}
+                      </div>
+                      <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        Pickup s/d POD
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Detailed Tutup Buku Sections */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Driver Operational Status */}
+                  <div className="p-5 rounded-2xl border border-border bg-card space-y-3 shadow-xs">
+                    <h5 className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-blue-600" />
+                      Status Personel Driver
+                    </h5>
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-border flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-extrabold text-foreground">{dailySummary.driverNames}</div>
+                        <div className="text-[10px] text-muted-foreground">Driver Utama • Nopol B 1234 XYZ</div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        PENGANTARAN SELESAI
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* KDE POD Verification Summary */}
+                  <div className="p-5 rounded-2xl border border-border bg-card space-y-3 shadow-xs">
+                    <h5 className="text-xs font-bold text-foreground flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      Rekap Pengembalian POD Gudang KDE
+                    </h5>
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-border flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-extrabold text-foreground">Faktur & POD Fisik</div>
+                        <div className="text-[10px] text-muted-foreground">Dikembalikan & Diverifikasi oleh KDE</div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        100% VERIFIED OK
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeGroup ? (
               <>
                 {/* Chat Header Bar */}
                 <div className="px-5 py-3.5 border-b border-border bg-card flex items-center justify-between shadow-xs">
@@ -705,89 +898,6 @@ export default function NotificationsWebPage() {
 
                 {/* Chat Feed Scroll Area with geometric/subtle grid pattern - Chronological Order (Oldest -> Newest) */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-                  {/* Daily Delivery Summary Banner Card */}
-                  {dailySummary && (
-                    <div className="max-w-2xl mx-auto rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-emerald-50/90 via-card to-emerald-50/40 dark:from-emerald-950/40 dark:via-card dark:to-emerald-950/20 p-4 shadow-xs space-y-3.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/60 dark:border-emerald-800/40 pb-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-xs">
-                            🎉
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-foreground">
-                              Summary Laporan Pengiriman Tanggal {dailySummary.dateFormatted}
-                            </h4>
-                            <p className="text-[11px] text-muted-foreground">
-                              Rekapitulasi aktivitas tugas pengantaran & verifikasi faktur harian.
-                            </p>
-                          </div>
-                        </div>
-
-                        {dailySummary.isAllCompleted ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-emerald-600 text-white shadow-xs">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            SELURUH PENGANTARAN COMPLETED (100%)
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-blue-600 text-white shadow-xs">
-                            <Truck className="h-3.5 w-3.5" />
-                            PENGANTARAN SEDANG BERJALAN
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Metrics Card Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
-                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                            <Truck className="h-3 w-3 text-blue-600" /> Driver Bertugas
-                          </div>
-                          <div className="text-xs font-extrabold text-foreground mt-1">
-                            {dailySummary.driverCount} Driver
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {dailySummary.driverNames}
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
-                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                            <Package className="h-3 w-3 text-amber-600" /> Total Apotek
-                          </div>
-                          <div className="text-xs font-extrabold text-foreground mt-1">
-                            {dailySummary.pharmacyCount} Apotek
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {dailySummary.dispatchCount} Dispatch Order
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
-                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                            <FileText className="h-3 w-3 text-purple-600" /> Total Invoice
-                          </div>
-                          <div className="text-xs font-extrabold text-foreground mt-1">
-                            {dailySummary.invoiceCount} Invoice
-                          </div>
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                            100% Diverifikasi
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-background/80 border border-emerald-100 dark:border-emerald-900/40 shadow-2xs">
-                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                            <Radio className="h-3 w-3 text-emerald-600" /> Waktu Operasi
-                          </div>
-                          <div className="text-[11px] font-bold text-foreground mt-1">
-                            {dailySummary.firstTime} - {dailySummary.lastTime}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            Pickup s/d POD
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   {(() => {
                     // Sort items chronologically (oldest at top to newest at bottom like WhatsApp chat)
                     const chronologicalItems = [...activeGroup.items].sort(
