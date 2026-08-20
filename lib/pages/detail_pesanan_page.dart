@@ -96,8 +96,10 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     return null;
   }
 
-  Future<void> _refreshOrderDetails() async {
-    setState(() => _isLoading = true);
+  Future<void> _refreshOrderDetails({bool showLoading = false}) async {
+    if (showLoading) {
+      setState(() => _isLoading = true);
+    }
     try {
       final dashboard = await ApiService.getDashboard();
       if (mounted) {
@@ -139,7 +141,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     } catch (e) {
       debugPrint('Error refreshing order details: $e');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && showLoading) setState(() => _isLoading = false);
     }
   }
 
@@ -1107,16 +1109,57 @@ Catatan: $noteText''';
                               batchStops: _batchStops,
                             ),
                           ),
-                        ).then((res) {
+                        ).then((res) async {
                           if (res != null && mounted) {
                             if (res is OrderModel) {
                               setState(() {
                                 _currentOrder = res;
                                 _routePoints = [];
                               });
-                              _refreshOrderDetails();
+                              await _refreshOrderDetails();
                             } else {
-                              _refreshOrderDetails();
+                              await _refreshOrderDetails();
+                              final uncompleted = _batchStops.where((s) => s.status != 'READY_FOR_PICKUP_FACTURE' && s.status != 'COMPLETED' && s.status != 'CANCELLED').toList();
+                              if (uncompleted.isEmpty) {
+                                if (mounted) {
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (ctx) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                                      title: const Row(
+                                        children: [
+                                          Text('🎉 ', style: TextStyle(fontSize: 24)),
+                                          Expanded(
+                                            child: Text(
+                                              'Semua Titik Selesai!',
+                                              style: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Poppins', fontSize: 16),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      content: Text(
+                                        'Seluruh invoice pada pengantaran ${_currentOrder.dispatchId.isNotEmpty ? _currentOrder.dispatchId : _currentOrder.orderNumber} telah diverifikasi.\n\nSilakan kembali ke K-24 Hub untuk Pengembalian POD.',
+                                        style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.4),
+                                      ),
+                                      actions: [
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primaryGreen,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.pop(ctx);
+                                            Navigator.pop(context, {'switchToPodTab': true});
+                                          },
+                                          child: const Text('Ke Tab Pengembalian POD', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                              }
                             }
                           }
                         });

@@ -19,50 +19,28 @@ class ApiService {
   static Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _customBaseUrl = prefs.getString('custom_base_url');
+      final savedUrl = prefs.getString('custom_base_url');
+      if (savedUrl != null && savedUrl.isNotEmpty && savedUrl != _publicServerUrl) {
+        try {
+          final response = await http
+              .get(Uri.parse('$savedUrl/health'))
+              .timeout(const Duration(milliseconds: 1000));
+          if (response.statusCode == 200) {
+            _customBaseUrl = savedUrl;
+            return;
+          }
+        } catch (_) {
+          await prefs.remove('custom_base_url');
+        }
+      }
     } catch (_) {}
 
-    // Verify stored custom Base URL, if unreachable clear it
-    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
-      try {
-        final response = await http
-            .get(Uri.parse('$_customBaseUrl/health'))
-            .timeout(const Duration(milliseconds: 1500));
-        if (response.statusCode != 200) {
-          _customBaseUrl = null;
-        }
-      } catch (_) {
-        _customBaseUrl = null;
-      }
-    }
-
-    // Connect to public server or discover LAN
-    await _autoDiscoverServer();
+    // Default directly to Public Server instantly (no wasted delay loop on local IPs)
+    _customBaseUrl = _publicServerUrl;
   }
 
-  /// Connect to Public Server first, then local fallbacks
+  /// Fast public server connection check
   static Future<void> _autoDiscoverServer() async {
-    final localUrls = [
-      _publicServerUrl,
-      'http://10.0.2.2:8087/api',
-      'http://127.0.0.1:8087/api',
-    ];
-
-    for (final url in localUrls) {
-      try {
-        final response = await http
-            .get(Uri.parse('$url/health'))
-            .timeout(const Duration(milliseconds: 2000));
-        if (response.statusCode == 200) {
-          _customBaseUrl = url;
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('custom_base_url', url);
-          debugPrint('[API] Server terhubung: $url');
-          return;
-        }
-      } catch (_) {}
-    }
-
     _customBaseUrl = _publicServerUrl;
   }
 
@@ -220,11 +198,13 @@ class ApiService {
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
     };
 
     if (authRequired) {
       final token = await getToken();
-      if (token != null) {
+      if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
       }
     }
@@ -241,8 +221,8 @@ class ApiService {
     }
   }
 
-  // HTTP Request Helper with automatic known server IP fallback & Dev Inspector Logging
-  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 40)}) async {
+  // HTTP Request Helper with fast 10s default timeout & fallback
+  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 10)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'POST',
       url: url,
@@ -252,13 +232,17 @@ class ApiService {
         try {
           return await http.post(url, headers: headers, body: body).timeout(timeout);
         } catch (e) {
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
+            throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
+          }
           if (!kIsWeb && !url.host.contains(_knownServerIp)) {
             final fallbackUrl = Uri.parse(url.toString().replaceFirst(RegExp(r'http://[^/]+'), 'http://$_knownServerIp:$_serverPort'));
             debugPrint('[API Fallback] Retrying POST on known server IP: $fallbackUrl');
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.post(fallbackUrl, headers: headers, body: body).timeout(timeout);
+            return await http.post(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 8));
           }
           rethrow;
         }
@@ -266,7 +250,7 @@ class ApiService {
     );
   }
 
-  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 40)}) async {
+  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 10)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'GET',
       url: url,
@@ -275,13 +259,17 @@ class ApiService {
         try {
           return await http.get(url, headers: headers).timeout(timeout);
         } catch (e) {
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
+            throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
+          }
           if (!kIsWeb && !url.host.contains(_knownServerIp)) {
             final fallbackUrl = Uri.parse(url.toString().replaceFirst(RegExp(r'http://[^/]+'), 'http://$_knownServerIp:$_serverPort'));
             debugPrint('[API Fallback] Retrying GET on known server IP: $fallbackUrl');
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.get(fallbackUrl, headers: headers).timeout(timeout);
+            return await http.get(fallbackUrl, headers: headers).timeout(const Duration(seconds: 8));
           }
           rethrow;
         }
@@ -289,7 +277,7 @@ class ApiService {
     );
   }
 
-  static Future<http.Response> _putWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 40)}) async {
+  static Future<http.Response> _putWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 10)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'PUT',
       url: url,
@@ -299,13 +287,17 @@ class ApiService {
         try {
           return await http.put(url, headers: headers, body: body).timeout(timeout);
         } catch (e) {
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
+            throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
+          }
           if (!kIsWeb && !url.host.contains(_knownServerIp)) {
             final fallbackUrl = Uri.parse(url.toString().replaceFirst(RegExp(r'http://[^/]+'), 'http://$_knownServerIp:$_serverPort'));
             debugPrint('[API Fallback] Retrying PUT on known server IP: $fallbackUrl');
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.put(fallbackUrl, headers: headers, body: body).timeout(timeout);
+            return await http.put(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 8));
           }
           rethrow;
         }
@@ -340,7 +332,7 @@ class ApiService {
     });
 
     try {
-      final response = await _postWithRetry(url, headers: headers, body: body);
+      final response = await _postWithRetry(url, headers: headers, body: body, timeout: const Duration(seconds: 8));
       if (response.statusCode == 201) {
         final resData = jsonDecode(response.body);
         final token = resData['data']['token'];
@@ -356,7 +348,7 @@ class ApiService {
     }
   }
 
-  // Log in a driver via Email and Password
+  // Log in a driver via Email and Password (8s fast timeout)
   static Future<void> login({
     required String email,
     required String password,
@@ -369,7 +361,7 @@ class ApiService {
     });
 
     try {
-      final response = await _postWithRetry(url, headers: headers, body: body);
+      final response = await _postWithRetry(url, headers: headers, body: body, timeout: const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final resData = jsonDecode(response.body);
         final token = resData['data']['token'];
@@ -399,7 +391,7 @@ class ApiService {
     });
 
     try {
-      final response = await _postWithRetry(url, headers: headers, body: body);
+      final response = await _postWithRetry(url, headers: headers, body: body, timeout: const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final resData = jsonDecode(response.body);
         final token = resData['data']['token'];

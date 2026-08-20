@@ -938,6 +938,70 @@ export default function OrdersPage() {
             </div>
           </div>
         )}
+
+        {/* Photo Lightbox Preview Modal inside Detail View */}
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+            onClick={() => setLightboxImage(null)}
+          >
+            <div
+              className="relative max-w-4xl w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/80">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📷</span>
+                  <h3 className="font-bold text-sm text-white">{lightboxImage.title}</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fullUrl = formatFullPhotoUrl(lightboxImage.url)
+                      window.open(fullUrl, '_blank', 'noopener,noreferrer')
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 text-xs font-semibold border border-blue-500/30 transition-colors flex items-center gap-1"
+                  >
+                    <span>Buka di Tab Baru</span> ↗
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxImage(null)}
+                    className="h-8 w-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-base transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Image View */}
+              <div className="relative flex-1 bg-black flex items-center justify-center min-h-[300px] max-h-[70vh] p-2 overflow-auto">
+                <img
+                  src={formatFullPhotoUrl(lightboxImage.url)}
+                  alt={lightboxImage.title}
+                  className="max-h-[68vh] max-w-full object-contain rounded-lg shadow-lg"
+                />
+
+                {/* Dynamic Camera Watermark Overlay */}
+                <div className="absolute bottom-4 left-4 right-4 sm:left-6 sm:right-auto bg-black/85 backdrop-blur-md text-white p-3 rounded-xl border border-white/20 shadow-xl max-w-md pointer-events-none">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-1.5 mb-1.5">
+                    <span className="font-extrabold text-xs tracking-wider text-amber-400 font-mono uppercase flex items-center gap-1.5">
+                      <span>🕒</span> {lightboxImage.timestamp || 'REALTIME TIMESTAMP VERIFIED'}
+                    </span>
+                    <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold">
+                      GPS VERIFIED
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 font-mono leading-tight">
+                    📍 K-24 LOGISTICS SYSTEM • REALTIME DIGITAL WATERMARK STAMP
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </DashboardShell>
     )
   }

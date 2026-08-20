@@ -23,6 +23,7 @@ class LoggedScreen extends StatefulWidget {
 
 class _LoggedScreenState extends State<LoggedScreen> {
   int _currentTab = 0;
+  int _subTabIndex = 0;
   DashboardDataModel? _dashboardData;
   bool _isLoading = true;
   String? _errorMessage;
@@ -148,6 +149,15 @@ class _LoggedScreenState extends State<LoggedScreen> {
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
+      });
+    }
+  }
+
+  void _handleNavigationResult(dynamic result) {
+    _fetchDashboardData();
+    if (result != null && result is Map && result['switchToPodTab'] == true) {
+      setState(() {
+        _subTabIndex = 1; // Auto switch to Pengembalian POD tab
       });
     }
   }
@@ -1058,13 +1068,14 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => DetailPesananPage(order: order),
                         ),
-                      ).then((_) => _fetchDashboardData());
+                      );
+                      _handleNavigationResult(result);
                     },
                     icon: const Icon(Icons.visibility_rounded, size: 16),
                     label: const Text('Detail', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
@@ -1079,13 +1090,14 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => DetailPesananPage(order: order),
                         ),
-                      ).then((_) => _fetchDashboardData());
+                      );
+                      _handleNavigationResult(result);
                     },
                     icon: const Icon(Icons.arrow_forward_rounded, size: 16),
                     label: Text(
@@ -1704,9 +1716,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 builder: (context) => DetailPesananPage(order: o),
               ),
             );
-            if (result == true) {
-              _fetchDashboardData(showLoading: true);
-            }
+            _handleNavigationResult(result);
           },
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -2078,9 +2088,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       builder: (context) => DetailPesananPage(order: orders.first),
                     ),
                   );
-                  if (result == true) {
-                    _fetchDashboardData(showLoading: true);
-                  }
+                  _handleNavigationResult(result);
                 },
                 icon: const Icon(Icons.camera_alt_outlined, size: 20),
                 label: Text(
@@ -2166,6 +2174,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
     }
 
     return DefaultTabController(
+      key: ValueKey('tab_ctrl_$_subTabIndex'),
+      initialIndex: _subTabIndex,
       length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
