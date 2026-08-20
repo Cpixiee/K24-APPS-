@@ -155,11 +155,15 @@ class _LoggedScreenState extends State<LoggedScreen> {
 
   Future<void> _handleNavigationResult(dynamic result) async {
     await _fetchDashboardData(showLoading: true);
-    if (result != null && result is Map && result['switchToPodTab'] == true) {
+    if (result != null && result is Map) {
       if (mounted) {
         setState(() {
           _currentTab = 1; // Bottom navigation: Pesanan tab
-          _subTabIndex = 1; // TabBar: Pengembalian POD tab
+          if (result['switchToCompletedTab'] == true) {
+            _subTabIndex = 2; // TabBar: Selesai tab
+          } else if (result['switchToPodTab'] == true) {
+            _subTabIndex = 1; // TabBar: Pengembalian POD tab
+          }
         });
       }
     }
@@ -2168,8 +2172,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
               context,
               MaterialPageRoute(builder: (context) => VerifikasiPODPage(groupOrders: orders)),
             );
-            if (res == true && mounted) {
-              _fetchDashboardData(showLoading: false);
+            if (res != null && mounted) {
+              _handleNavigationResult(res is Map ? res : {'switchToCompletedTab': true});
             }
           },
           child: _buildGroupedOrderCard(groupKey, orders),

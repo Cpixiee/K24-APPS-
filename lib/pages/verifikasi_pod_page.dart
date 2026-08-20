@@ -68,7 +68,7 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
         ),
       );
 
-      Navigator.pop(context, true);
+      Navigator.pop(context, {'switchToCompletedTab': true});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -318,10 +318,11 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
 
     Widget imageWidget;
     try {
-      if (photoUrl.startsWith('data:image')) {
-        final parts = photoUrl.split(',');
+      final cleanUrl = photoUrl.trim();
+      if (cleanUrl.startsWith('data:image')) {
+        final parts = cleanUrl.split(',');
         if (parts.length > 1) {
-          final bytes = base64Decode(parts[1]);
+          final bytes = base64Decode(parts[1].trim());
           imageWidget = Image.memory(
             bytes,
             fit: BoxFit.cover,
@@ -331,13 +332,23 @@ class _VerifikasiPODPageState extends State<VerifikasiPODPage> {
         } else {
           imageWidget = const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey));
         }
-      } else {
+      } else if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
         imageWidget = Image.network(
-          photoUrl,
+          cleanUrl,
           fit: BoxFit.cover,
           width: double.infinity,
           errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
         );
+      } else if (cleanUrl.isNotEmpty && cleanUrl.contains('/')) {
+        final fullUrl = cleanUrl.startsWith('/') ? '${ApiService.baseUrl}$cleanUrl' : '${ApiService.baseUrl}/$cleanUrl';
+        imageWidget = Image.network(
+          fullUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey)),
+        );
+      } else {
+        imageWidget = const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey));
       }
     } catch (e) {
       imageWidget = const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey));

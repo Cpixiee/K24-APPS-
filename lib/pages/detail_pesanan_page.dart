@@ -1287,9 +1287,9 @@ Catatan: $noteText''';
                 ),
               ),
             );
-            if (res == true && mounted) {
+            if (res != null && mounted) {
               await _refreshOrderDetails();
-              Navigator.pop(context, true);
+              Navigator.pop(context, res is Map ? res : {'switchToCompletedTab': true});
             }
           },
           icon: const Icon(Icons.assignment_returned_rounded),
