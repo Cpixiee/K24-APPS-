@@ -1606,13 +1606,15 @@ class _LoggedScreenState extends State<LoggedScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          _formatRupiah(o.deliveryFee),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                            color: Color(0xFF00B05C), // Clean Green for Earning!
-                            fontFamily: 'Poppins',
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Reguler',
+                            style: TextStyle(fontSize: 10, color: Color(0xFF0054A6), fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                           ),
                         ),
                         gapH4,
@@ -1830,16 +1832,16 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Ongkos Kirim',
+                          'Batch Order',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey.shade500,
                             fontFamily: 'Poppins',
                           ),
                         ),
-                        Text(
-                          _formatRupiah(o.deliveryFee),
-                          style: const TextStyle(
+                        const Text(
+                          '—',
+                          style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF10B981),
                             fontSize: 15,
@@ -2019,9 +2021,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            _formatRupiah(o.deliveryFee),
-                            style: const TextStyle(
+                          const Text(
+                            '—',
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF10B981),
                               fontSize: 14,
@@ -2390,9 +2392,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       ],
                     ),
                     gapH8,
-                    Text(
-                      _formatRupiah(stats.totalEarnings),
-                      style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: -0.5),
+                    const Text(
+                      '—',
+                      style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: -0.5),
                     ),
                     const SizedBox(height: 18),
                     Container(height: 1, color: Colors.white.withValues(alpha: 0.2)),
@@ -2417,9 +2419,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
                           children: [
                             const Text('Hari Ini', style: TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'Poppins')),
                             gapH4,
-                            Text(
-                              _formatRupiah(stats.todayEarnings),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14, fontFamily: 'Poppins'),
+                            const Text(
+                              '—',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14, fontFamily: 'Poppins'),
                             ),
                           ],
                         ),
@@ -2483,9 +2485,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
               ),
             ],
           ),
-          Text(
-            amount > 0 ? _formatRupiah(amount) : 'Rp 0',
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.darkGrey, fontFamily: 'Poppins'),
+          const Text(
+            '—',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.darkGrey, fontFamily: 'Poppins'),
           ),
         ],
       ),

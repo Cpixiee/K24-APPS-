@@ -1836,7 +1836,7 @@ Catatan: $noteText''';
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Ongkos Kirim',
+                                        'Pengantaran Non-Tunai',
                                         style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
                                       ),
                                       gapH4,
@@ -1846,9 +1846,9 @@ Catatan: $noteText''';
                                       ),
                                     ],
                                   ),
-                                  Text(
-                                    _formatRupiah(_currentOrder.deliveryFee),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryGreen, fontFamily: 'Poppins'),
+                                  const Text(
+                                    '—',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primaryGreen, fontFamily: 'Poppins'),
                                   ),
                                 ],
                               ),

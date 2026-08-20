@@ -149,17 +149,10 @@ export default function DispatchTrackingPage({ params }: { params: Promise<{ dis
             </div>
 
             {/* Delivery Stats */}
-            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm flex items-center justify-around text-center">
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm flex items-center justify-center text-center">
               <div>
                 <span className="text-xs text-muted-foreground block">Total Titik Antar</span>
                 <span className="text-lg font-bold text-foreground">{data.stops.length} Alamat</span>
-              </div>
-              <div className="h-8 w-px bg-border" />
-              <div>
-                <span className="text-xs text-muted-foreground block">Total Argo Batch</span>
-                <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                  Rp {data.total_argo ? data.total_argo.toLocaleString('id-ID') : '0'}
-                </span>
               </div>
             </div>
           </div>

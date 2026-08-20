@@ -665,19 +665,7 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Card 5: Total Tarif */}
-              <div className="bg-card border border-border p-4 rounded-2xl flex items-center gap-3.5 shadow-sm col-span-2 md:col-span-1">
-                <div className="h-10 w-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total Tarif</p>
-                  <p className="font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
-                    {isDispatched ? formatRp(orderDetail.grand_total) : '—'}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Grand Total</p>
-                </div>
-              </div>
+
             </div>
 
             {/* Two-Column Grid Layout */}
@@ -763,10 +751,6 @@ export default function OrdersPage() {
                             <Compass className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                             <span>Jarak: <strong className="text-foreground font-semibold">{isDispatched && s.distance_km > 0 ? `${s.distance_km.toFixed(1)} km` : '—'}</strong></span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <CreditCard className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                            <span>Tarif: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{isDispatched ? formatRp(s.fee) : '—'}</strong></span>
-                          </div>
                         </div>
 
                         {renderStopApproval(s)}
@@ -775,29 +759,7 @@ export default function OrdersPage() {
                   })()}
                 </div>
 
-                {/* Ringkasan Pembayaran */}
-                <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
-                  <h3 className="font-bold text-base text-foreground mb-4">Ringkasan Pembayaran</h3>
-                  {isDispatched ? (
-                    <div className="divide-y divide-border">
-                      {orderDetail.stops.map((s, idx) => (
-                        <div key={s.id} className="flex justify-between py-3 text-sm">
-                          <span className="text-muted-foreground">Tarif Titik {idx + 1} ({s.distance_km?.toFixed(1) || 0} km)</span>
-                          <span className="font-semibold text-foreground">{formatRp(s.fee)}</span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between items-center pt-4 pb-1 mt-2 text-base font-extrabold">
-                        <span className="text-emerald-600 dark:text-emerald-400">Total Tarif</span>
-                        <span className="text-emerald-600 dark:text-emerald-400 text-lg">{formatRp(orderDetail.grand_total)}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-border text-sm text-muted-foreground">
-                      <AlertCircle className="h-5 w-5 text-blue-500 shrink-0" />
-                      <p>Rincian tarif dan biaya pengiriman baru akan dikalkulasi dan ditampilkan setelah pesanan di-dispatch ke kurir driver.</p>
-                    </div>
-                  )}
-                </div>
+
               </div>
 
               {/* Right column */}
@@ -995,7 +957,7 @@ export default function OrdersPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {[
-                      'Order ID', 'Status', 'Driver', 'Total Tarif', 'Alamat Tujuan', 'Dibuat', 'Aksi'
+                      'Order ID', 'Status', 'Driver', 'Alamat Tujuan', 'Dibuat', 'Aksi'
                     ].map((h) => (
                       <th key={h} className="px-5 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{h}</th>
                     ))}
@@ -1043,14 +1005,7 @@ export default function OrdersPage() {
                           </div>
                         </td>
 
-                        {/* Total Tarif */}
-                        <td className="px-5 py-4">
-                          {o.is_dispatched ? (
-                            <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400">{formatRp(o.total_fee || 0)}</span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic font-medium">Menunggu Dispatch</span>
-                          )}
-                        </td>
+
 
                         {/* Alamat */}
                         <td className="px-5 py-4">
