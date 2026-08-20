@@ -153,12 +153,15 @@ class _LoggedScreenState extends State<LoggedScreen> {
     }
   }
 
-  void _handleNavigationResult(dynamic result) {
-    _fetchDashboardData();
+  Future<void> _handleNavigationResult(dynamic result) async {
+    await _fetchDashboardData(showLoading: true);
     if (result != null && result is Map && result['switchToPodTab'] == true) {
-      setState(() {
-        _subTabIndex = 1; // Auto switch to Pengembalian POD tab
-      });
+      if (mounted) {
+        setState(() {
+          _currentTab = 1; // Bottom navigation: Pesanan tab
+          _subTabIndex = 1; // TabBar: Pengembalian POD tab
+        });
+      }
     }
   }
 
@@ -1975,9 +1978,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
                       builder: (context) => DetailPesananPage(order: o),
                     ),
                   );
-                  if (result == true) {
-                    _fetchDashboardData(showLoading: true);
-                  }
+                  _handleNavigationResult(result);
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -2108,16 +2109,27 @@ class _LoggedScreenState extends State<LoggedScreen> {
     }
     final data = _dashboardData!;
 
-    // Group active orders by dispatchId or parentOrderNumber (excluding READY_FOR_PICKUP_FACTURE)
-    final groupedActive = <String, List<OrderModel>>{};
-    for (final o in data.activeOrders.where((o) => o.status != 'READY_FOR_PICKUP_FACTURE')) {
+    // 1. Group active orders by dispatchId or parentOrderNumber
+    final rawActiveGrouped = <String, List<OrderModel>>{};
+    for (final o in data.activeOrders) {
       final key = o.dispatchId.isNotEmpty
           ? o.dispatchId
           : (o.parentOrderNumber.isNotEmpty 
               ? o.parentOrderNumber 
               : o.orderNumber.replaceAll(RegExp(r'-[0-9]+$'), ''));
-      groupedActive.putIfAbsent(key, () => []).add(o);
+      rawActiveGrouped.putIfAbsent(key, () => []).add(o);
     }
+
+    // 2. Filter groupedActive for Tab "Proses":
+    // ONLY include a dispatch group if there is AT LEAST ONE stop whose status is STILL IN PROGRESS ('DELIVERING', 'WAITING_FOR_PICKUP', 'PENDING')!
+    // If ALL stops in a dispatch group have status 'READY_FOR_PICKUP_FACTURE' or 'COMPLETED' or 'CANCELLED', EXCLUDE it from Tab "Proses"!
+    final groupedActive = <String, List<OrderModel>>{};
+    rawActiveGrouped.forEach((groupKey, orders) {
+      final hasUnfinished = orders.any((o) => o.status != 'READY_FOR_PICKUP_FACTURE' && o.status != 'COMPLETED' && o.status != 'CANCELLED');
+      if (hasUnfinished) {
+        groupedActive[groupKey] = orders;
+      }
+    });
 
     final activeListItems = <Widget>[];
     groupedActive.forEach((parentNo, orders) {

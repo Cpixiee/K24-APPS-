@@ -649,6 +649,56 @@ Catatan: $noteText''';
     );
   }
 
+    bool get _isAllStopsCompleted {
+    if (_currentOrder.status == 'READY_FOR_PICKUP_FACTURE' || _currentOrder.status == 'COMPLETED') {
+      return true;
+    }
+    if (_batchStops.isNotEmpty) {
+      return _batchStops.every((s) => s.status == 'READY_FOR_PICKUP_FACTURE' || s.status == 'COMPLETED' || s.status == 'CANCELLED');
+    }
+    return false;
+  }
+
+    void _showAllStopsCompletedDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Text('🎉 ', style: TextStyle(fontSize: 24)),
+            Expanded(
+              child: Text(
+                'Semua Titik Selesai!',
+                style: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Poppins', fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Seluruh invoice pada pengantaran ' + (_currentOrder.dispatchId.isNotEmpty ? _currentOrder.dispatchId : _currentOrder.orderNumber) + ' telah diverifikasi. Silakan kembali ke K-24 Hub untuk Pengembalian POD.',
+          style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context, {'switchToPodTab': true});
+            },
+            child: const Text('Ke Tab Pengembalian POD', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showFactureModal() async {
     final res = await Navigator.push(
       context,
@@ -669,6 +719,9 @@ Catatan: $noteText''';
         _promptNextStopVerification(res);
       } else {
         await _refreshOrderDetails();
+        if (_isAllStopsCompleted && mounted) {
+          _showAllStopsCompletedDialog();
+        }
       }
     }
   }
@@ -1530,7 +1583,11 @@ Catatan: $noteText''';
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        Navigator.of(context).pop(true);
+        if (_isAllStopsCompleted) {
+          Navigator.of(context).pop({'switchToPodTab': true});
+        } else {
+          Navigator.of(context).pop(true);
+        }
       },
       child: Scaffold(
         appBar: AppBar(
