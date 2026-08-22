@@ -317,28 +317,28 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     if (_batchStops.isNotEmpty) {
       for (final stop in _batchStops) {
         final name = stop.customerName.isNotEmpty ? stop.customerName : stop.pharmacyName;
-        apotekList.writeln('_$name_');
+        apotekList.writeln('_${name}_');
       }
     } else {
       final name = _currentOrder.customerName.isNotEmpty ? _currentOrder.customerName : _currentOrder.pharmacyName;
-      apotekList.writeln('_$name_');
+      apotekList.writeln('_${name}_');
     }
 
     final message = '''K24 JAKARTA
 ——————————————————————-
 *LAPORAN PICKUP*
 ——————————————————————-
-*TANGGAL*: _$dateStr_
-*JAM*: _$pickupTimeStr_
-*ID DRIVER*: _$driverName_
+*TANGGAL*: _${dateStr}_
+*JAM*: _${pickupTimeStr}_
+*ID DRIVER*: _${driverName}_
 
-*JUMLAH ALAMAT*: _$totalStops Apotek_
+*JUMLAH ALAMAT*: _${totalStops} Apotek_
 ${apotekList.toString().trim()}
 
 _order sudah di pick up oleh driver_
 
 _catatan_:
-_$noteText_''';
+_${noteText}_''';
 
     // 1. First, attempt to share the Watermarked Pickup Photo as media attachment with caption via Share.shareXFiles
     try {
