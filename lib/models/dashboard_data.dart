@@ -117,6 +117,33 @@ class OrderModel {
     this.handoverPhotoUrl = '',
   });
 
+  String get batchGroupKey {
+    if (dispatchId.trim().isNotEmpty) return dispatchId.trim();
+    if (parentOrderNumber.trim().isNotEmpty) return parentOrderNumber.trim();
+    final cleanOrder = orderNumber.trim();
+    final dashIdx = cleanOrder.lastIndexOf('-');
+    if (dashIdx > 0) {
+      return cleanOrder.substring(0, dashIdx);
+    }
+    return cleanOrder;
+  }
+
+  bool isSameBatch(OrderModel other) {
+    if (id == other.id) return true;
+    if (dispatchId.isNotEmpty && other.dispatchId.isNotEmpty && dispatchId == other.dispatchId) {
+      return true;
+    }
+    if (parentOrderNumber.isNotEmpty && other.parentOrderNumber.isNotEmpty && parentOrderNumber == other.parentOrderNumber) {
+      return true;
+    }
+    final keyA = batchGroupKey;
+    final keyB = other.batchGroupKey;
+    if (keyA.isNotEmpty && keyB.isNotEmpty && keyA == keyB) {
+      return true;
+    }
+    return false;
+  }
+
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     return OrderModel(
       id: json['id'] as int? ?? 0,

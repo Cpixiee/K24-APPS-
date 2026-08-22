@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -287,6 +288,18 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
       return;
     }
 
+    // 4. Validate Mandatory Foto Serah Terima Paket
+    if (_handoverPhotoBase64 == null || _handoverPhotoBase64!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('⚠️ Foto Serah Terima Paket / Penerima Wajib Diisi!'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     setState(() => _submitting = true);
 
     try {
@@ -309,33 +322,50 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
       );
 
       // Open WhatsApp automatically to send real-time delivery report per stop
-      await _sendWhatsAppReport(checkedPayload);
+      try {
+        await _sendWhatsAppReport(checkedPayload);
+      } catch (e) {
+        debugPrint('[WA Report Error Handled] $e');
+      }
 
       if (!mounted) return;
 
-      // Check if there are remaining uncompleted stops in batchStops
-      final remainingStops = widget.batchStops.where((s) => s.id != widget.order.id && s.status != 'COMPLETED' && s.status != 'READY_FOR_PICKUP_FACTURE').toList();
+      // Compute remaining uncompleted stops INSTANTLY (0s delay) from local batchStops
+      final remainingStops = widget.batchStops.where((s) {
+        return widget.order.isSameBatch(s) &&
+               s.id != widget.order.id &&
+               s.status != 'COMPLETED' &&
+               s.status != 'READY_FOR_PICKUP_FACTURE' &&
+               s.status != 'CANCELLED';
+      }).toList();
+
+      // Trigger background dashboard refresh asynchronously (fire and forget) to keep cache updated
+      unawaited(ApiService.getDashboard(forceRefresh: true).then((_) {}, onError: (_) {}));
 
       if (remainingStops.isNotEmpty) {
         final nextStop = remainingStops.first;
         final name = nextStop.customerName.isNotEmpty ? nextStop.customerName : nextStop.pharmacyName;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ Unboxing & Laporan WA terkirim! Melanjutkan ke titik berikutnya: $name'),
-            backgroundColor: AppColors.primaryGreen,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        Navigator.pop(context, nextStop);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Unboxing & Laporan WA terkirim! Melanjutkan ke titik berikutnya: $name'),
+              backgroundColor: AppColors.primaryGreen,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          Navigator.pop(context, nextStop);
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('🎉 Seluruh titik pengantaran selesai! Silakan lakukan pengembalian POD ke K-24 Hub.'),
-            backgroundColor: AppColors.primaryGreen,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        Navigator.pop(context, true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎉 Seluruh titik pengantaran selesai! Silakan lakukan pengembalian POD ke K-24 Hub.'),
+              backgroundColor: AppColors.primaryGreen,
+              duration: Duration(seconds: 5),
+            ),
+          );
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -734,10 +764,14 @@ $webUrl''';
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                imgFile,
-                                fit: BoxFit.cover,
-                              ),
+                              child: kIsWeb
+                                  ? (_factureBytesMap[inv] != null
+                                      ? Image.memory(_factureBytesMap[inv]!, fit: BoxFit.cover)
+                                      : Image.network(imgFile.path, fit: BoxFit.cover))
+                                  : Image.file(
+                                      imgFile,
+                                      fit: BoxFit.cover,
+                                    ),
                             ),
                           ),
                           Positioned(
@@ -909,10 +943,14 @@ $webUrl''';
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              _handoverPhotoFile!,
-                              fit: BoxFit.cover,
-                            ),
+                            child: kIsWeb
+                                ? (_handoverPhotoBase64 != null
+                                    ? Image.memory(base64Decode(_handoverPhotoBase64!.split(',').last), fit: BoxFit.cover)
+                                    : Image.network(_handoverPhotoFile!.path, fit: BoxFit.cover))
+                                : Image.file(
+                                    _handoverPhotoFile!,
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
                         ),
                         Positioned(

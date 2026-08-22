@@ -64,7 +64,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         source: ImageSource.gallery,
       );
       if (file == null) return;
-      final bytes = await File(file.path).readAsBytes();
+      final bytes = await file.readAsBytes();
       final base64Str = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       setState(() {
         if (type == 'ktp') {

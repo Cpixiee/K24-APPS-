@@ -206,7 +206,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	       COALESCE(dp.ktp_url, ''), COALESCE(dp.sim_url, ''), COALESCE(dp.stnk_url, '')
 	FROM users u
 	LEFT JOIN driver_profiles dp ON u.id = dp.user_id
-	WHERE u.email = $1 OR u.username = $1;`
+	WHERE u.email = $1 OR u.username = $1 OR u.phone = $1;`
 
 	err := h.DB.QueryRow(ctx, selectQuery, req.Email).Scan(
 		&user.ID, &user.Username, &user.Email, &user.Name, &passwordHash, &user.Phone, &user.Role,

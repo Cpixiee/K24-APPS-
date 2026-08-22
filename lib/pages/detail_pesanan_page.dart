@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +38,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
   List<LatLng> _routePoints = [];
   bool _loadingRoute = false;
   List<OrderModel> _allActiveOrders = [];
+  bool _isPreparingUnboxingPopup = false;
 
   @override
   void initState() {
@@ -52,7 +54,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       final dashboard = await ApiService.getDashboard();
       if (mounted) {
         setState(() {
-          _allActiveOrders = dashboard.activeOrders;
+          _allActiveOrders = [...dashboard.activeOrders, ...dashboard.recentOrders];
           if (dashboard.driver.name.isNotEmpty) {
             _driverName = dashboard.driver.name;
           }
@@ -63,17 +65,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
 
   List<OrderModel> get _batchStops {
     if (_allActiveOrders.isEmpty) return [_currentOrder];
-    
-    final siblings = _allActiveOrders.where((o) {
-      if (_currentOrder.dispatchId.isNotEmpty && o.dispatchId.isNotEmpty) {
-        return o.dispatchId == _currentOrder.dispatchId;
-      }
-      if (_currentOrder.parentOrderNumber.isNotEmpty && o.parentOrderNumber.isNotEmpty) {
-        return o.parentOrderNumber == _currentOrder.parentOrderNumber;
-      }
-      return o.id == _currentOrder.id;
-    }).toList();
-
+    final siblings = _allActiveOrders.where((o) => _currentOrder.isSameBatch(o)).toList();
     return siblings.isNotEmpty ? siblings : [_currentOrder];
   }
 
@@ -87,9 +79,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     if (_allActiveOrders.isEmpty) return null;
     for (final o in _allActiveOrders) {
       if (o.id == _currentOrder.id) continue;
-      final bool isSameBatch = (_currentOrder.dispatchId.isNotEmpty && o.dispatchId.isNotEmpty && o.dispatchId == _currentOrder.dispatchId) ||
-          (_currentOrder.parentOrderNumber.isNotEmpty && o.parentOrderNumber.isNotEmpty && o.parentOrderNumber == _currentOrder.parentOrderNumber);
-      if (isSameBatch && o.status != 'COMPLETED' && o.status != 'CANCELLED' && o.status != 'READY_FOR_PICKUP_FACTURE') {
+      if (_currentOrder.isSameBatch(o) && o.status != 'COMPLETED' && o.status != 'CANCELLED' && o.status != 'READY_FOR_PICKUP_FACTURE') {
         return o;
       }
     }
@@ -104,7 +94,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       final dashboard = await ApiService.getDashboard();
       if (mounted) {
         setState(() {
-          _allActiveOrders = dashboard.activeOrders;
+          _allActiveOrders = [...dashboard.activeOrders, ...dashboard.recentOrders];
         });
       }
       // Find this order in either active or recent list
@@ -279,7 +269,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       XFile? image;
       try {
         image = await _picker.pickImage(
-          source: ImageSource.camera,
+          source: kIsWeb ? ImageSource.gallery : ImageSource.camera,
           imageQuality: 70,
           maxWidth: 1024,
         );
@@ -293,7 +283,7 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
       }
 
       if (image != null) {
-        final bytes = await File(image.path).readAsBytes();
+        final bytes = await image.readAsBytes();
         final rawBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
         final driverName = _driverName.isNotEmpty ? _driverName : 'Driver K-24';
         final loc = (locationText != null && locationText.trim().isNotEmpty)
@@ -711,16 +701,34 @@ Catatan: $noteText''';
     );
     if (res != null && mounted) {
       if (res is OrderModel) {
+        // Mark current order as READY_FOR_PICKUP_FACTURE in _allActiveOrders list locally
+        final updatedList = _allActiveOrders.map((o) {
+          if (o.id == _currentOrder.id) {
+            return o.copyWith(status: 'READY_FOR_PICKUP_FACTURE');
+          }
+          return o;
+        }).toList();
+
         setState(() {
+          _allActiveOrders = updatedList;
           _currentOrder = res;
           _routePoints = [];
         });
-        await _refreshOrderDetails();
+
+        // Prompt next stop verification popup INSTANTLY (0 seconds delay!)
         _promptNextStopVerification(res);
+
+        // Refresh details in background without blocking popup
+        _refreshOrderDetails();
       } else {
-        await _refreshOrderDetails();
-        if (_isAllStopsCompleted && mounted) {
-          _showAllStopsCompletedDialog();
+        // Last stop unboxing completed! Update local order status immediately and pop to POD Return tab!
+        if (mounted) {
+          setState(() {
+            _currentOrder = _currentOrder.copyWith(status: 'READY_FOR_PICKUP_FACTURE');
+          });
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context, {'switchToPodTab': true});
+          }
         }
       }
     }
@@ -766,11 +774,15 @@ Catatan: $noteText''';
                 ),
                 onPressed: () {
                   Navigator.pop(context);
-                  _showFactureModal();
+                  if (_currentOrder.arrivedPhotoUrl.isEmpty) {
+                    _showArrivedAtLocationModal();
+                  } else {
+                    _showFactureModal();
+                  }
                 },
                 icon: const Icon(Icons.assignment_turned_in_rounded),
                 label: Text(
-                  'Langsung Verifikasi Invoice ($targetName)',
+                  _currentOrder.arrivedPhotoUrl.isEmpty ? '📍 Sudah Tiba di Lokasi ($targetName)' : '📋 Verifikasi Invoice ($targetName)',
                   style: const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 13),
                 ),
               ),
@@ -1113,7 +1125,9 @@ Catatan: $noteText''';
                               try {
                                 await ApiService.waitUnboxOrder(_currentOrder.id, reason);
                                 if (mounted) {
-                                  Navigator.pop(context);
+                                  if (Navigator.canPop(context)) {
+                                    Navigator.pop(context);
+                                  }
                                   await _refreshOrderDetails();
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -1153,69 +1167,10 @@ Catatan: $noteText''';
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => VerifikasiInvoicePage(
-                              order: _currentOrder,
-                              batchStops: _batchStops,
-                            ),
-                          ),
-                        ).then((res) async {
-                          if (res != null && mounted) {
-                            if (res is OrderModel) {
-                              setState(() {
-                                _currentOrder = res;
-                                _routePoints = [];
-                              });
-                              await _refreshOrderDetails();
-                            } else {
-                              await _refreshOrderDetails();
-                              final uncompleted = _batchStops.where((s) => s.status != 'READY_FOR_PICKUP_FACTURE' && s.status != 'COMPLETED' && s.status != 'CANCELLED').toList();
-                              if (uncompleted.isEmpty) {
-                                if (mounted) {
-                                  showDialog(
-                                    context: context,
-                                    barrierDismissible: false,
-                                    builder: (ctx) => AlertDialog(
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                                      title: const Row(
-                                        children: [
-                                          Text('🎉 ', style: TextStyle(fontSize: 24)),
-                                          Expanded(
-                                            child: Text(
-                                              'Semua Titik Selesai!',
-                                              style: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Poppins', fontSize: 16),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      content: Text(
-                                        'Seluruh invoice pada pengantaran ${_currentOrder.dispatchId.isNotEmpty ? _currentOrder.dispatchId : _currentOrder.orderNumber} telah diverifikasi.\n\nSilakan kembali ke K-24 Hub untuk Pengembalian POD.',
-                                        style: const TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.4),
-                                      ),
-                                      actions: [
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.primaryGreen,
-                                            foregroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                          ),
-                                          onPressed: () {
-                                            Navigator.pop(ctx);
-                                            Navigator.pop(context, {'switchToPodTab': true});
-                                          },
-                                          child: const Text('Ke Tab Pengembalian POD', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                              }
-                            }
-                          }
-                        });
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                        }
+                        _showFactureModal();
                       },
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text('Lanjut Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
@@ -1372,34 +1327,68 @@ Catatan: $noteText''';
         return Column(
           children: [
             Container(
+              width: double.infinity,
               margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFD1FAE5),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF10B981)),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF10B981), width: 1.2),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
-                  SizedBox(width: 6),
-                  Text('Driver Sudah Tiba di Lokasi Apotek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins')),
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 20),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Driver Sudah Tiba di Lokasi Apotek',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins'),
+                    ),
+                  ),
                 ],
               ),
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryGreen,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
+            if (_isPreparingUnboxingPopup)
+              Container(
+                height: 50,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primaryGreen.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.primaryGreen),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Memuat opsi unboxing...',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primaryGreen, fontFamily: 'Poppins'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                onPressed: _showUnboxingOptionDialog,
+                icon: const Icon(Icons.assignment_turned_in_rounded),
+                label: const Text('📋 Verifikasi Invoice / Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
               ),
-              onPressed: _showUnboxingOptionDialog,
-              icon: const Icon(Icons.assignment_turned_in_rounded),
-              label: const Text('📋 Verifikasi Invoice / Unboxing', style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.bold, fontSize: 14)),
-            ),
           ],
         );
       }
@@ -1533,10 +1522,10 @@ Catatan: $noteText''';
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('✅ Bukti Tiba di Lokasi Berhasil Disimpan'), backgroundColor: AppColors.primaryGreen),
                         );
-                        await _refreshOrderDetails();
-                        if (mounted) {
-                          _showUnboxingOptionDialog();
-                        }
+                        // Open popup INSTANTLY (0ms delay!)
+                        _showUnboxingOptionDialog();
+                        // Refresh order details in background
+                        _refreshOrderDetails();
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1578,6 +1567,14 @@ Catatan: $noteText''';
 
     final nextStop = _nextUncompletedStop;
     final isActionable = (_currentOrder.status != 'COMPLETED' && _currentOrder.status != 'CANCELLED') || nextStop != null;
+
+    if (_isAllStopsCompleted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context).pop({'switchToPodTab': true});
+        }
+      });
+    }
 
     return PopScope(
       canPop: false,
@@ -1669,7 +1666,9 @@ Catatan: $noteText''';
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        _currentOrder.orderNumber,
+                                        _currentOrder.dispatchId.isNotEmpty
+                                            ? _currentOrder.dispatchId
+                                            : (_currentOrder.parentOrderNumber.isNotEmpty ? _currentOrder.parentOrderNumber : _currentOrder.orderNumber),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w900,
                                           fontSize: 14,
@@ -1677,6 +1676,18 @@ Catatan: $noteText''';
                                           fontFamily: 'Poppins',
                                         ),
                                       ),
+                                      if (_currentOrder.dispatchId.isNotEmpty && _currentOrder.orderNumber != _currentOrder.dispatchId) ...[
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          _currentOrder.orderNumber,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.shade500,
+                                            fontFamily: 'Poppins',
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 2),
                                       Text(
                                         _formatDateTime(_currentOrder.createdAt),

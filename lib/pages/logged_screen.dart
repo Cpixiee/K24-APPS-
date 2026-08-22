@@ -62,25 +62,23 @@ class _LoggedScreenState extends State<LoggedScreen> {
     _fetchDashboardData(showLoading: true);
     _loadAvatarIndex();
     
-    // Register background worker task
-    NotificationService.registerBackgroundTask();
-    
-    // Initial notifications check
-    _checkNotifications();
-
-    // Setup periodic polling for new notifications every 15 seconds
-    _notificationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    // Defer non-critical background timers & notifications by 1.5 seconds for instant app startup
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted) return;
+      NotificationService.registerBackgroundTask();
       _checkNotifications();
-    });
 
-    // Setup periodic GPS location update every 10 seconds
-    _locationTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _sendDriverLocationUpdate();
-    });
+      _notificationTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+        _checkNotifications();
+      });
 
-    // Request GPS permission and trigger initial location update
-    GpsLocationService.checkPermission().then((_) {
-      _sendDriverLocationUpdate();
+      _locationTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+        _sendDriverLocationUpdate();
+      });
+
+      GpsLocationService.checkPermission().then((_) {
+        _sendDriverLocationUpdate();
+      });
     });
   }
 
@@ -146,8 +144,20 @@ class _LoggedScreenState extends State<LoggedScreen> {
       await prefs.setString('driver_plate', data.driver.plateNumber);
       await prefs.setString('driver_rating', data.driver.rating.toStringAsFixed(2));
     } catch (e) {
+      final errStr = e.toString().replaceAll('Exception: ', '');
+      if (errStr.contains('401') || errStr.toLowerCase().contains('unauthorized') || errStr.toLowerCase().contains('invalid or expired token')) {
+        debugPrint('[LoggedScreen] 401 session expired — clearing auth & returning to login.');
+        await ApiService.clearAuthData();
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const GetStartedScreen(title: 'Get Started')),
+            (route) => false,
+          );
+        }
+        return;
+      }
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = errStr;
         _isLoading = false;
       });
     }
@@ -299,7 +309,61 @@ class _LoggedScreenState extends State<LoggedScreen> {
     );
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.wifi_off_rounded, size: 48, color: Colors.red.shade400),
+            ),
+            gapH16,
+            const Text(
+              'Gagal Terhubung ke Server',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkGrey, fontFamily: 'Poppins'),
+            ),
+            gapH8,
+            Text(
+              _errorMessage ?? 'Terjadi kesalahan sistem',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontFamily: 'Poppins'),
+            ),
+            gapH24,
+            ElevatedButton.icon(
+              onPressed: () => _fetchDashboardData(showLoading: true),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Coba Lagi', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabContent() {
+    if (_dashboardData == null) {
+      if (_isLoading) {
+        return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
+      }
+      if (_errorMessage != null) {
+        return _buildErrorState();
+      }
+      return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
+    }
+
     switch (_currentTab) {
       case 0:
         return _buildDashboardContent();
@@ -318,60 +382,13 @@ class _LoggedScreenState extends State<LoggedScreen> {
   // TAB 0: ENHANCED KINETIC DRIVER DASHBOARD
   // -------------------------------------------------------------
   Widget _buildDashboardContent() {
-    if (_isLoading && _dashboardData == null) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.primaryGreen,
-        ),
-      );
-    }
-
-    if (_errorMessage != null && _dashboardData == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.wifi_off_rounded, size: 48, color: Colors.red.shade400),
-              ),
-              gapH16,
-              const Text(
-                'Gagal Terhubung ke Server',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkGrey, fontFamily: 'Poppins'),
-              ),
-              gapH8,
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontFamily: 'Poppins'),
-              ),
-              gapH24,
-              ElevatedButton.icon(
-                onPressed: () => _fetchDashboardData(showLoading: true),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Coba Lagi', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    if (_dashboardData == null) {
+      if (_errorMessage != null) return _buildErrorState();
+      return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
     }
 
     final data = _dashboardData!;
-    final activeOrders = data.recentOrders.where((o) => o.status != 'COMPLETED' && o.status != 'CANCELLED').toList();
+    final activeOrders = data.activeOrders.where((o) => o.status != 'COMPLETED' && o.status != 'CANCELLED' && o.status != 'READY_FOR_PICKUP_FACTURE').toList();
 
     return Stack(
       children: [
@@ -1974,15 +1991,26 @@ class _LoggedScreenState extends State<LoggedScreen> {
             separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
             itemBuilder: (context, index) {
               final o = orders[index];
+              final isPodReturn = o.status == 'READY_FOR_PICKUP_FACTURE';
               return InkWell(
                 onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => DetailPesananPage(order: o),
-                    ),
-                  );
-                  _handleNavigationResult(result);
+                  if (isPodReturn) {
+                    final res = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => VerifikasiPODPage(groupOrders: orders)),
+                    );
+                    if (res != null && mounted) {
+                      _handleNavigationResult(res is Map ? res : {'switchToCompletedTab': true});
+                    }
+                  } else {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DetailPesananPage(order: o),
+                      ),
+                    );
+                    _handleNavigationResult(result);
+                  }
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -2108,38 +2136,30 @@ class _LoggedScreenState extends State<LoggedScreen> {
   }
 
   Widget _buildPesananContent() {
-    if (_isLoading && _dashboardData == null) {
+    if (_dashboardData == null) {
+      if (_errorMessage != null) return _buildErrorState();
       return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
     }
     final data = _dashboardData!;
 
-    // 1. Group active orders by dispatchId or parentOrderNumber
+    // 1. Group active orders by batchGroupKey
     final rawActiveGrouped = <String, List<OrderModel>>{};
     for (final o in data.activeOrders) {
-      final key = o.dispatchId.isNotEmpty
-          ? o.dispatchId
-          : (o.parentOrderNumber.isNotEmpty 
-              ? o.parentOrderNumber 
-              : o.orderNumber.replaceAll(RegExp(r'-[0-9]+$'), ''));
-      rawActiveGrouped.putIfAbsent(key, () => []).add(o);
+      rawActiveGrouped.putIfAbsent(o.batchGroupKey, () => []).add(o);
     }
 
     // 2. Filter groupedActive for Tab "Proses":
-    // ONLY include a dispatch group if there is AT LEAST ONE stop whose status is STILL IN PROGRESS ('DELIVERING', 'WAITING_FOR_PICKUP', 'PENDING')!
-    // If ALL stops in a dispatch group have status 'READY_FOR_PICKUP_FACTURE' or 'COMPLETED' or 'CANCELLED', EXCLUDE it from Tab "Proses"!
+    // ONLY include stops whose status is STILL IN PROGRESS ('DELIVERING', 'WAITING_FOR_PICKUP', 'PENDING')!
+    // If a stop is 'READY_FOR_PICKUP_FACTURE' (unboxed), it MUST BE EXCLUDED from Tab "Proses" and shown ONLY in Tab "Pengembalian POD"!
     final groupedActive = <String, List<OrderModel>>{};
     rawActiveGrouped.forEach((groupKey, orders) {
-      final hasUnfinished = orders.any((o) => o.status != 'READY_FOR_PICKUP_FACTURE' && o.status != 'COMPLETED' && o.status != 'CANCELLED');
-      if (hasUnfinished) {
-        groupedActive[groupKey] = orders;
+      final unfinishedOrders = orders.where((o) => o.status != 'READY_FOR_PICKUP_FACTURE' && o.status != 'COMPLETED' && o.status != 'CANCELLED').toList();
+      if (unfinishedOrders.isNotEmpty) {
+        groupedActive[groupKey] = unfinishedOrders;
       }
     });
 
-    final activeListItems = <Widget>[];
-    groupedActive.forEach((parentNo, orders) {
-      activeListItems.add(_buildGroupedOrderCard(parentNo, orders));
-      activeListItems.add(gapH12);
-    });
+    final activeGroupsList = groupedActive.entries.toList();
 
     // POD Return orders list (status READY_FOR_PICKUP_FACTURE)
     final rawPodReturnOrders = <OrderModel>[];
@@ -2154,40 +2174,11 @@ class _LoggedScreenState extends State<LoggedScreen> {
 
     final groupedPOD = <String, List<OrderModel>>{};
     for (final o in rawPodReturnOrders) {
-      final key = o.dispatchId.isNotEmpty
-          ? o.dispatchId
-          : (o.parentOrderNumber.isNotEmpty 
-              ? o.parentOrderNumber 
-              : o.orderNumber.replaceAll(RegExp(r'-[0-9]+$'), ''));
-      groupedPOD.putIfAbsent(key, () => []).add(o);
+      groupedPOD.putIfAbsent(o.batchGroupKey, () => []).add(o);
     }
 
-    final podReturnListItems = <Widget>[];
-    groupedPOD.forEach((groupKey, orders) {
-      podReturnListItems.add(
-        InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () async {
-            final res = await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => VerifikasiPODPage(groupOrders: orders)),
-            );
-            if (res != null && mounted) {
-              _handleNavigationResult(res is Map ? res : {'switchToCompletedTab': true});
-            }
-          },
-          child: _buildGroupedOrderCard(groupKey, orders),
-        ),
-      );
-      podReturnListItems.add(gapH12);
-    });
-
-    // Completed orders list (status COMPLETED)
-    final completedListItems = <Widget>[];
-    for (final o in data.recentOrders.where((o) => o.status == 'COMPLETED')) {
-      completedListItems.add(_buildOrderCard(o, isCurrentActive: false));
-      completedListItems.add(gapH12);
-    }
+    final podReturnGroupsList = groupedPOD.entries.toList();
+    final completedOrdersList = data.recentOrders.where((o) => o.status == 'COMPLETED').toList();
 
     return DefaultTabController(
       key: ValueKey('tab_ctrl_$_subTabIndex'),
@@ -2228,9 +2219,9 @@ class _LoggedScreenState extends State<LoggedScreen> {
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 tabs: [
-                  Tab(text: 'Proses (${groupedActive.length})'),
-                  Tab(text: 'Pengembalian POD (${groupedPOD.length})'),
-                  Tab(text: 'Selesai (${completedListItems.length ~/ 2})'),
+                  Tab(text: 'Proses (${activeGroupsList.length})'),
+                  Tab(text: 'Pengembalian POD (${podReturnGroupsList.length})'),
+                  Tab(text: 'Selesai (${completedOrdersList.length})'),
                 ],
               ),
             ),
@@ -2242,7 +2233,7 @@ class _LoggedScreenState extends State<LoggedScreen> {
             RefreshIndicator(
               onRefresh: () => _fetchDashboardData(showLoading: false),
               color: AppColors.primaryGreen,
-              child: activeListItems.isEmpty
+              child: activeGroupsList.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
@@ -2268,17 +2259,22 @@ class _LoggedScreenState extends State<LoggedScreen> {
                         ),
                       ],
                     )
-                  : ListView(
+                  : ListView.separated(
                       padding: const EdgeInsets.all(16),
                       physics: const AlwaysScrollableScrollPhysics(),
-                      children: activeListItems,
+                      itemCount: activeGroupsList.length,
+                      separatorBuilder: (_, __) => gapH12,
+                      itemBuilder: (context, index) {
+                        final entry = activeGroupsList[index];
+                        return _buildGroupedOrderCard(entry.key, entry.value);
+                      },
                     ),
             ),
             // Pengembalian POD Tab
             RefreshIndicator(
               onRefresh: () => _fetchDashboardData(showLoading: false),
               color: AppColors.primaryGreen,
-              child: podReturnListItems.isEmpty
+              child: podReturnGroupsList.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
@@ -2304,17 +2300,34 @@ class _LoggedScreenState extends State<LoggedScreen> {
                         ),
                       ],
                     )
-                  : ListView(
+                  : ListView.separated(
                       padding: const EdgeInsets.all(16),
                       physics: const AlwaysScrollableScrollPhysics(),
-                      children: podReturnListItems,
+                      itemCount: podReturnGroupsList.length,
+                      separatorBuilder: (_, __) => gapH12,
+                      itemBuilder: (context, index) {
+                        final entry = podReturnGroupsList[index];
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () async {
+                            final res = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => VerifikasiPODPage(groupOrders: entry.value)),
+                            );
+                            if (res != null && mounted) {
+                              _handleNavigationResult(res is Map ? res : {'switchToCompletedTab': true});
+                            }
+                          },
+                          child: _buildGroupedOrderCard(entry.key, entry.value),
+                        );
+                      },
                     ),
             ),
             // Completed orders tab
             RefreshIndicator(
               onRefresh: () => _fetchDashboardData(showLoading: false),
               color: AppColors.primaryGreen,
-              child: completedListItems.isEmpty
+              child: completedOrdersList.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
@@ -2340,10 +2353,14 @@ class _LoggedScreenState extends State<LoggedScreen> {
                         ),
                       ],
                     )
-                  : ListView(
+                  : ListView.separated(
                       padding: const EdgeInsets.all(16),
                       physics: const AlwaysScrollableScrollPhysics(),
-                      children: completedListItems,
+                      itemCount: completedOrdersList.length,
+                      separatorBuilder: (_, __) => gapH12,
+                      itemBuilder: (context, index) {
+                        return _buildOrderCard(completedOrdersList[index], isCurrentActive: false);
+                      },
                     ),
             ),
           ],
@@ -2356,7 +2373,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
   // TAB 2: KINETIC EARNINGS CONTENT
   // -------------------------------------------------------------
   Widget _buildPenghasilanContent() {
-    if (_isLoading && _dashboardData == null) {
+    if (_dashboardData == null) {
+      if (_errorMessage != null) return _buildErrorState();
       return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
     }
     final stats = _dashboardData!.stats;
@@ -2524,7 +2542,8 @@ class _LoggedScreenState extends State<LoggedScreen> {
   // TAB 3: KINETIC ACCOUNT PROFILE CONTENT
   // -------------------------------------------------------------
   Widget _buildAkunContent() {
-    if (_isLoading && _dashboardData == null) {
+    if (_dashboardData == null) {
+      if (_errorMessage != null) return _buildErrorState();
       return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
     }
     final driver = _dashboardData!.driver;

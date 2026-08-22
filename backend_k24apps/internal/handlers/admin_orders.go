@@ -1728,18 +1728,34 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// Retrieve order driver_id and dispatch_id
+	// Retrieve order driver_id, dispatch_id, and parent_order_number
 	var currentDriverID int
-	var dispatchID string
-	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(driver_id, 0), COALESCE(dispatch_id, '') FROM orders WHERE id = $1", orderID).Scan(&currentDriverID, &dispatchID)
+	var dispatchID, parentOrderNum, orderNum string
+	_ = h.DB.QueryRow(ctx, "SELECT COALESCE(driver_id, 0), COALESCE(dispatch_id, ''), COALESCE(parent_order_number, ''), COALESCE(order_number, '') FROM orders WHERE id = $1", orderID).Scan(&currentDriverID, &dispatchID, &parentOrderNum, &orderNum)
 
-	if currentDriverID > 0 && dispatchID != "" {
-		// Update ONLY sibling orders assigned to the SAME driver in the SAME dispatch group
+	batchMatch := dispatchID
+	if batchMatch == "" {
+		batchMatch = parentOrderNum
+	}
+	if batchMatch == "" && strings.Contains(orderNum, "-") {
+		parts := strings.Split(orderNum, "-")
+		if len(parts) >= 2 {
+			batchMatch = parts[0] + "-" + parts[1] // e.g. ORDER-000018
+		}
+	}
+
+	if batchMatch != "" {
+		// Update ALL sibling orders in the SAME dispatch/batch group
 		_, err := h.DB.Exec(ctx,
 			`UPDATE orders 
 			 SET status = 'DELIVERING', pickup_photo_url = $1, pickup_note = $2 
-			 WHERE driver_id = $3 AND dispatch_id = $4`,
-			req.PickupPhoto, req.PickupNote, currentDriverID, dispatchID,
+			 WHERE (
+			   (dispatch_id <> '' AND dispatch_id = $3) OR 
+			   (parent_order_number <> '' AND parent_order_number = $4) OR 
+			   (order_number LIKE $5 || '%') OR 
+			   id::text = $6
+			 )`,
+			req.PickupPhoto, req.PickupNote, dispatchID, parentOrderNum, batchMatch, orderID,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Status: "error", Message: "Gagal memperbarui status pickup batch: " + err.Error()})
@@ -1760,7 +1776,7 @@ func (h *AdminHandler) UpdateOrderPickup(c *gin.Context) {
 
 	// Trigger Notifications for DELIVERING status transition
 	var driverID, mitraID *int
-	var pharmName, customerName, orderNum string
+	var pharmName, customerName string
 	err := h.DB.QueryRow(ctx, "SELECT driver_id, mitra_id, pharmacy_name, customer_name, order_number FROM orders WHERE id = $1", orderID).Scan(&driverID, &mitraID, &pharmName, &customerName, &orderNum)
 	if err == nil {
 		if driverID != nil {

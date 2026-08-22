@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:apps_k24/theme/app_colors.dart';
 import 'package:apps_k24/theme/gaps.dart';
@@ -57,6 +58,12 @@ Widget buildProfileImage(String? path, {double size = 80, IconData fallbackIcon 
     final base = ApiService.baseUrl.replaceAll('/api', '');
     img = Image.network(
       '$base$path',
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Icon(fallbackIcon, size: size * 0.54, color: fallbackColor),
+    );
+  } else if (path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://') || kIsWeb) {
+    img = Image.network(
+      path,
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) => Icon(fallbackIcon, size: size * 0.54, color: fallbackColor),
     );
@@ -1270,7 +1277,9 @@ class _ImageCropScreenState extends State<ImageCropScreen> {
                     turns: AlwaysStoppedAnimation(_rotation / 360),
                     child: widget.isAsset
                         ? Image.asset(widget.imagePath, fit: BoxFit.contain)
-                        : Image.file(File(widget.imagePath), fit: BoxFit.contain),
+                        : (kIsWeb
+                            ? Image.network(widget.imagePath, fit: BoxFit.contain)
+                            : Image.file(File(widget.imagePath), fit: BoxFit.contain)),
                   ),
                 ),
                 

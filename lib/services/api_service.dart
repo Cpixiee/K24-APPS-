@@ -17,6 +17,12 @@ class ApiService {
 
   // Initialize the API Service, loading custom base URL if saved
   static Future<void> init() async {
+    if (kIsWeb) {
+      _customBaseUrl = _publicServerUrl;
+      debugPrint('[API] Running on web — using public server at $_publicServerUrl');
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedUrl = prefs.getString('custom_base_url');
@@ -38,6 +44,7 @@ class ApiService {
     // Default directly to Public Server instantly (no wasted delay loop on local IPs)
     _customBaseUrl = _publicServerUrl;
   }
+
 
   /// Fast public server connection check
   static Future<void> _autoDiscoverServer() async {
@@ -176,19 +183,20 @@ class ApiService {
     try {
       final url = Uri.parse('$baseUrl/driver/dashboard');
       final headers = await _getHeaders(authRequired: true);
-      final response = await http.get(url, headers: headers).timeout(const Duration(seconds: 4));
+      final response = await http.get(url, headers: headers).timeout(const Duration(seconds: 15));
       
       if (response.statusCode == 200) {
         return true;
-      } else if (response.statusCode == 401) {
-        // Token is expired or invalid on backend
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token is expired or invalid on backend — clear auth so user can re-login
+        debugPrint('[API] Saved session token is invalid/expired (${response.statusCode}). Clearing auth data.');
         await clearAuthData();
         return false;
       }
       // For temporary server errors or other status codes, keep session active
       return true;
-    } catch (_) {
-      // Offline / network timeout: treat saved token as valid
+    } catch (e) {
+      debugPrint('[API] validateSession network check error: $e');
       return true;
     }
   }
@@ -198,8 +206,6 @@ class ApiService {
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Accept-Encoding': 'gzip, deflate',
-      'Connection': 'keep-alive',
     };
 
     if (authRequired) {
@@ -222,7 +228,7 @@ class ApiService {
   }
 
   // HTTP Request Helper with fast 10s default timeout & fallback
-  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 10)}) async {
+  static Future<http.Response> _postWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 20)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'POST',
       url: url,
@@ -232,6 +238,7 @@ class ApiService {
         try {
           return await http.post(url, headers: headers, body: body).timeout(timeout);
         } catch (e) {
+          debugPrint('[API Catch POST Error] $url -> $e');
           final errStr = e.toString().toLowerCase();
           if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
             throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
@@ -242,7 +249,7 @@ class ApiService {
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.post(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 8));
+            return await http.post(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 12));
           }
           rethrow;
         }
@@ -250,7 +257,7 @@ class ApiService {
     );
   }
 
-  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 10)}) async {
+  static Future<http.Response> _getWithRetry(Uri url, {required Map<String, String> headers, Duration timeout = const Duration(seconds: 20)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'GET',
       url: url,
@@ -259,6 +266,7 @@ class ApiService {
         try {
           return await http.get(url, headers: headers).timeout(timeout);
         } catch (e) {
+          debugPrint('[API Catch GET Error] $url -> $e');
           final errStr = e.toString().toLowerCase();
           if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
             throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
@@ -269,7 +277,7 @@ class ApiService {
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.get(fallbackUrl, headers: headers).timeout(const Duration(seconds: 8));
+            return await http.get(fallbackUrl, headers: headers).timeout(const Duration(seconds: 12));
           }
           rethrow;
         }
@@ -277,7 +285,7 @@ class ApiService {
     );
   }
 
-  static Future<http.Response> _putWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 10)}) async {
+  static Future<http.Response> _putWithRetry(Uri url, {required Map<String, String> headers, required String body, Duration timeout = const Duration(seconds: 20)}) async {
     return HttpDebugLogger.wrapRequest(
       method: 'PUT',
       url: url,
@@ -287,6 +295,7 @@ class ApiService {
         try {
           return await http.put(url, headers: headers, body: body).timeout(timeout);
         } catch (e) {
+          debugPrint('[API Catch PUT Error] $url -> $e');
           final errStr = e.toString().toLowerCase();
           if (errStr.contains('timeout') || errStr.contains('socketexception') || errStr.contains('clientexception')) {
             throw Exception('Koneksi internet lambat / terputus. Silakan periksa jaringan Anda.');
@@ -297,7 +306,7 @@ class ApiService {
             _customBaseUrl = 'http://$_knownServerIp:$_serverPort/api';
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('custom_base_url', _customBaseUrl!);
-            return await http.put(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 8));
+            return await http.put(fallbackUrl, headers: headers, body: body).timeout(const Duration(seconds: 12));
           }
           rethrow;
         }
@@ -411,8 +420,25 @@ class ApiService {
   // Dashboard & Driver Operations
   // ---------------------------------------------------------
 
-  // Fetch all dashboard aggregations
-  static Future<DashboardDataModel> getDashboard() async {
+  // In-memory caching engine for dashboard data (reduces redundant network calls & lag)
+  static DashboardDataModel? _cachedDashboard;
+  static DateTime? _lastDashboardCacheTime;
+
+  static void clearDashboardCache() {
+    _cachedDashboard = null;
+    _lastDashboardCacheTime = null;
+  }
+
+  // Fetch all dashboard aggregations with 5-second TTL cache & instant offline fallback
+  static Future<DashboardDataModel> getDashboard({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _cachedDashboard != null &&
+        _lastDashboardCacheTime != null &&
+        now.difference(_lastDashboardCacheTime!) < const Duration(seconds: 5)) {
+      return _cachedDashboard!;
+    }
+
     final url = Uri.parse('$baseUrl/driver/dashboard');
     final headers = await _getHeaders(authRequired: true);
 
@@ -420,11 +446,19 @@ class ApiService {
       final response = await _getWithRetry(url, headers: headers);
       if (response.statusCode == 200) {
         final resData = jsonDecode(response.body);
-        return DashboardDataModel.fromJson(resData['data']);
+        final model = DashboardDataModel.fromJson(resData['data']);
+        _cachedDashboard = model;
+        _lastDashboardCacheTime = now;
+        return model;
       } else {
+        if (_cachedDashboard != null) return _cachedDashboard!;
         throw Exception(_parseError(response));
       }
     } catch (e) {
+      if (_cachedDashboard != null) {
+        debugPrint('[ApiService Cache Fallback] Returning cached dashboard due to network glitch: $e');
+        return _cachedDashboard!;
+      }
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     }
   }
@@ -754,6 +788,7 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception(_parseError(response));
     }
+    clearDashboardCache();
   }
 
   // Delay / wait unboxing order
