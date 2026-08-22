@@ -501,88 +501,78 @@ class _VerifikasiInvoicePageState extends State<VerifikasiInvoicePage> {
         ? widget.order.customerName
         : (widget.order.pharmacyName.isNotEmpty ? widget.order.pharmacyName : 'Apotek K-24');
 
-    final hasMissing = _invoices.any((inv) => (_invoiceStatuses[inv] ?? 'done') != 'done');
-    final String invoiceListText;
-
-    if (!hasMissing) {
-      invoiceListText = '• Invoice semua sudah sesuai';
-    } else {
-      final nonMatching = _invoices.where((inv) => (_invoiceStatuses[inv] ?? 'done') != 'done').toList();
-      invoiceListText = nonMatching.map((inv) {
-        final note = _missingNotes[inv]?.isNotEmpty == true ? ' (Keterangan: ${_missingNotes[inv]})' : '';
-        return '• $inv: TIDAK SESUAI$note';
-      }).join('\n');
-    }
-
     final recipientName = _recipientNameController.text.trim().isNotEmpty
         ? _recipientNameController.text.trim()
-        : widget.order.customerName;
-    final recipientPhone = _recipientPhoneController.text.trim().isNotEmpty
-        ? _recipientPhoneController.text.trim()
-        : widget.order.customerPhone;
+        : (widget.order.customerName.isNotEmpty ? widget.order.customerName : '-');
+
     final catatan = _catatanController.text.trim().isNotEmpty
         ? _catatanController.text.trim()
-        : (checkedPayload.contains('Tidak Sesuai') ? checkedPayload : 'Semua invoice sesuai & terverifikasi');
+        : (checkedPayload.contains('TIDAK SESUAI') ? checkedPayload : '-');
 
     final targetId = widget.order.dispatchId.isNotEmpty
         ? widget.order.dispatchId
         : (widget.order.orderNumber.isNotEmpty ? widget.order.orderNumber : '${widget.order.id}');
     final webUrl = 'http://103.236.140.19:9002/apoteker/unbox/$targetId';
 
-    final batchSummary = StringBuffer();
+    final driverName = _driverName.isNotEmpty ? _driverName : 'Driver K-24';
+    final totalStops = widget.batchStops.isNotEmpty ? widget.batchStops.length : 1;
+    int currentStopIndex = 1;
     if (widget.batchStops.isNotEmpty) {
-      batchSummary.writeln('DAFTAR SELURUH ORDER BATCH (${widget.batchStops.length} APOTEK):');
-      for (int i = 0; i < widget.batchStops.length; i++) {
-        final stop = widget.batchStops[i];
-        batchSummary.writeln('${i + 1}. ${stop.pharmacyName} (${stop.orderNumber})');
-        batchSummary.writeln('   Invoice: ${stop.checkedInvoices.isNotEmpty ? stop.checkedInvoices : stop.medicineSummary}');
-      }
-      batchSummary.writeln('——————————————————————');
+      final idx = widget.batchStops.indexWhere((s) => s.id == widget.order.id);
+      if (idx >= 0) currentStopIndex = idx + 1;
     }
 
-    final driverTag = _driverId != 0 ? '$_driverName (ID: $_driverId)' : _driverName;
-
     final message = '''K24 JAKARTA
-REALTIME REPORT
-Tanggal pengiriman: $dateStr
-——————————————————————
-ID apotek: $apotekName
-Alamat pengiriman: ${widget.order.deliveryAddress}
-No order: ${widget.order.orderNumber}
-ID driver: $driverTag
-Jam pickup: $pickupTimeStr
-Jam delivery: $timeStr
-——————————————————————
-$batchSummary
-Daftar invoice ($apotekName):
-$invoiceListText
-Catatan: $catatan
-——————————————————————
-Penerima:
-Nama: $recipientName
-No telp: $recipientPhone
-——————————————————————
-🌐 LINK VERIFIKASI UNBOXING REAL-TIME (TAB VIEW):
+——————————————————————-
+*LAPORAN PENGIRIMAN*
+——————————————————————-
+*TANGGAL*: $dateStr
+*JAM*: $timeStr
+*ID DRIVER*: $driverName
+
+_Tujuan ke $currentStopIndex dari total $totalStops alamat_
+
+*$apotekName*
+*PENERIMA*: $recipientName
+
+_barang dan invoice sudah diterima oleh apotek_
+
+_catatan_:
+$catatan
+
+Link verifikasi:
 $webUrl''';
 
-    // 1. First, attempt to share the Ningrat Logo Image WITH the report text as caption via Share.shareXFiles
+    // Share Handover Photo (Foto Bukti Serah Terima) WITH report text as caption via Share.shareXFiles
     try {
-      final byteData = await rootBundle.load('assets/images/logo_ningrat_text.jpg');
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/logo_ningrat_report.jpg');
-      await tempFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+      String? photoBase64 = _handoverPhotoBase64;
+      if (photoBase64 == null || photoBase64.trim().isEmpty) {
+        if (_facturePhotos.isNotEmpty) {
+          photoBase64 = _facturePhotos.values.firstWhere((p) => p.trim().isNotEmpty, orElse: () => '');
+        }
+      }
 
-      if (await tempFile.exists()) {
-        final xFile = XFile(tempFile.path);
-        await Share.shareXFiles(
-          [xFile],
-          text: message,
-          subject: 'K24 JAKARTA REALTIME REPORT',
-        );
-        return;
+      if (photoBase64 != null && photoBase64.trim().isNotEmpty) {
+        final cleanBase64 = photoBase64.contains(',')
+            ? photoBase64.split(',')[1]
+            : photoBase64;
+        final bytes = base64Decode(cleanBase64);
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/bukti_serah_terima_${widget.order.id}.jpg');
+        await tempFile.writeAsBytes(bytes);
+
+        if (await tempFile.exists()) {
+          final xFile = XFile(tempFile.path);
+          await Share.shareXFiles(
+            [xFile],
+            text: message,
+            subject: 'K24 JAKARTA LAPORAN PENGIRIMAN',
+          );
+          return;
+        }
       }
     } catch (e) {
-      debugPrint('[WA Image Share] Could not share logo image, falling back to url_launcher: $e');
+      debugPrint('[WA Handover Share] Could not share handover image: $e');
     }
 
     // 2. Fallback to direct url_launcher wa.me link

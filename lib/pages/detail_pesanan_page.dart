@@ -307,19 +307,38 @@ class _DetailPesananPageState extends State<DetailPesananPage> {
     required String pickupNote,
   }) async {
     final now = DateTime.now();
-    final dateStr = '${now.day}/${now.month}/${now.year}';
+    final dateStr = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
     final pickupTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} WIB';
     final driverName = _driverName.isNotEmpty ? _driverName : 'Driver K-24';
     final totalStops = _batchStops.isNotEmpty ? _batchStops.length : 1;
-    final noteText = pickupNote.trim().isNotEmpty ? pickupNote.trim() : 'Barang sudah diambil dari Gudang K-24';
+    final noteText = pickupNote.trim().isNotEmpty ? pickupNote.trim() : '-';
+
+    final apotekList = StringBuffer();
+    if (_batchStops.isNotEmpty) {
+      for (final stop in _batchStops) {
+        final name = stop.customerName.isNotEmpty ? stop.customerName : stop.pharmacyName;
+        apotekList.writeln('_$name_');
+      }
+    } else {
+      final name = _currentOrder.customerName.isNotEmpty ? _currentOrder.customerName : _currentOrder.pharmacyName;
+      apotekList.writeln('_$name_');
+    }
 
     final message = '''K24 JAKARTA
-LAPORAN PICKUP GUDANG
-Tanggal: $dateStr
-Jam pickup: $pickupTimeStr
-Nama driver: $driverName
-Jumlah alamat: $totalStops Apotek
-Catatan: $noteText''';
+——————————————————————-
+*LAPORAN PICKUP*
+——————————————————————-
+*TANGGAL*: _$dateStr_
+*JAM*: _$pickupTimeStr_
+*ID DRIVER*: _$driverName_
+
+*JUMLAH ALAMAT*: _$totalStops Apotek_
+${apotekList.toString().trim()}
+
+_order sudah di pick up oleh driver_
+
+_catatan_:
+_$noteText_''';
 
     // 1. First, attempt to share the Watermarked Pickup Photo as media attachment with caption via Share.shareXFiles
     try {
@@ -1325,32 +1344,8 @@ Catatan: $noteText''';
         );
       } else {
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFD1FAE5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF10B981), width: 1.2),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 20),
-                  SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      'Driver Sudah Tiba di Lokasi Apotek',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
             if (_isPreparingUnboxingPopup)
               Container(
                 height: 50,
@@ -1781,12 +1776,38 @@ Catatan: $noteText''';
                                     _currentOrder.pharmacyName,
                                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.darkGrey),
                                   ),
-                                  gapH4,
                                   Text(
-                                    _currentOrder.pharmacyAddress,
+                                    _currentOrder.deliveryAddress,
                                     style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.3),
                                   ),
                                   gapH12,
+                                  if (_currentOrder.arrivedPhotoUrl.isNotEmpty) ...[
+                                    Container(
+                                      width: double.infinity,
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD1FAE5),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFF10B981), width: 1.2),
+                                      ),
+                                      child: const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 20),
+                                          SizedBox(width: 8),
+                                          Flexible(
+                                            child: Text(
+                                              'Driver Sudah Tiba di Lokasi Apotek',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF047857), fontFamily: 'Poppins'),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   OutlinedButton.icon(
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: AppColors.secondaryBlue,
